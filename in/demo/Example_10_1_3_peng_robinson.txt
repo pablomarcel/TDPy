@@ -1,0 +1,97 @@
+title: Klein & Nellis Example 10.1-3 — Peng-Robinson EOS (CO2, mass basis) — TDPy
+
+given:
+  # ----------------------------
+  # Universal + fluid constants
+  # ----------------------------
+  R_u = 8314.462618                  # J/(kmol*K)
+  fluid = "CarbonDioxide"            # CoolProp fluid name
+
+  # Critical properties + acentric factor (CO2)
+  # (match EES/CoolProp-style reference values)
+  MW     = 44.0095                   # kg/kmol
+  T_crit = 304.1282                  # K
+  P_crit = 7377300.0                 # Pa
+  omega  = 0.22394                   # [-]
+
+  # Convert to mass-basis gas constant
+  R = R_u / MW                       # J/(kg*K)
+
+  # ----------------------------
+  # Reduced state (inputs)
+  # ----------------------------
+  P_r = 1.5                          # reduced pressure
+  T_r = 2.5                          # reduced temperature
+
+  # Absolute state
+  P = P_r * P_crit                   # Pa
+  T = T_r * T_crit                   # K
+
+  # ----------------------------
+  # Peng–Robinson parameterization
+  # ----------------------------
+  m = 0.37464 + 1.54226*omega - 0.26992*(omega**2)
+  alpha = (1.0 + m*(1.0 - sqrt(T_r)))**2
+
+  a = 0.45724*(R**2)*(T_crit**2)*alpha/P_crit
+  b = 0.07780*R*T_crit/P_crit
+
+  A_nd = a*P/((R**2)*(T**2))
+  B_nd = b*P/(R*T)
+
+  # Ideal-gas specific volume (for a good initial guess)
+  v_ideal = R*T/P
+
+equations:
+  # ----------------------------
+  # PR cubic EOS for Z (choose gas-like root by guess)
+  # Z^3 - (1-B) Z^2 + (A - 3B^2 - 2B) Z - (A B - B^2 - B^3) = 0
+  # ----------------------------
+  Z**3 - (1.0-B_nd)*Z**2 + (A_nd - 3.0*(B_nd**2) - 2.0*B_nd)*Z - (A_nd*B_nd - (B_nd**2) - (B_nd**3)) = 0.0
+
+  # PR specific volume from Z
+  v_PR = Z*R*T/P
+
+  # Reference specific volume from CoolProp (EES analog): v = 1/rho
+  v_EES = 1.0/PropsSI("D","T",T,"P",P,fluid)
+
+  # Compressibility from CoolProp reference v
+  Z_EES = P*v_EES/(R*T)
+
+  # Differences (quick comparison)
+  dv = v_PR - v_EES
+  dZ = Z - Z_EES
+
+guesses:
+  # Bias Z toward gas-like root (supercritical-ish condition)
+  ? Z = 0.90
+  ? v_PR = v_ideal
+
+  # Warm-start will overwrite v_EES / Z_EES once PropsSI evaluates
+  ? v_EES = v_ideal
+  ? Z_EES = 0.90
+
+  ? dv = 0.0
+  ? dZ = 0.0
+
+report:
+  fluid
+  P_r, T_r
+  P_crit, T_crit
+  P, T
+  MW, R
+  omega
+  m, alpha
+  a, b
+  A_nd, B_nd
+  v_ideal
+  Z, v_PR
+  v_EES, Z_EES
+  dv, dZ
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-12
+  max_iter = 600
+  max_restarts = 2

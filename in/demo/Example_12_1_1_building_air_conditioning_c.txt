@@ -1,0 +1,69 @@
+title: Klein & Nellis Example 12.1-1 (Building Air Conditioning System) — Part (c)
+
+given:
+  # Book inputs (English → we convert internally)
+  P = 101325          # Pa  (1 atm)
+  T_1_F = 95          # °F
+  phi_1 = 0.70        # relative humidity (0..1)
+
+# -----------------------------------------------------------------------------
+# Part (c) asks:
+#   "At what temperature does condensation begin as the air flows through the
+#    chilled water coil?"
+#
+# Dew point definition (book):
+#   - First compute partial pressure of water vapor at state 1:
+#       P_v_1 = phi_1 * P_sat(T_1)
+#   - Dew point is the saturation temperature at P_v_1:
+#       T_dp = T_sat(Water, P = P_v_1)
+#
+# Implementation notes (CoolProp):
+#   - P_sat(T_1): PropsSI("P","T",T_1,"Q",0,"Water")
+#   - T_sat(P_v_1): PropsSI("T","P",P_v_1,"Q",0,"Water")
+#   - Cross-check dew point directly from humid-air routine (optional):
+#       T_dp_HA = HAPropsSI("D","T",T_1,"P",P,"R",phi_1)
+# -----------------------------------------------------------------------------
+
+guess:
+  # Temperature conversions
+  T_1_C = 35.0
+  T_1   = 308.15
+
+  # Saturation/partial pressures (Pa)
+  P_sat_1 = 5600
+  P_v_1   = 3900
+
+  # Dew point (book reports ~301.9 K / 83.66 F)
+  T_dp     = 301.9
+  T_dp_F   = 83.7
+  T_dp_HA  = 301.9
+  T_dp_HA_F= 83.7
+
+equations:
+  # --- Convert T1 from °F to K ---
+  T_1_C = (T_1_F - 32) * (5/9)
+  T_1   = T_1_C + 273.15
+
+  # --- State 1 vapor partial pressure ---
+  P_sat_1 = PropsSI("P","T",T_1,"Q",0,"Water")
+  P_v_1   = phi_1 * P_sat_1
+
+  # --- Dew point temperature (saturation temperature at P_v_1) ---
+  T_dp   = PropsSI("T","P",P_v_1,"Q",0,"Water")
+  T_dp_F = (T_dp - 273.15) * (9/5) + 32
+
+  # --- Optional cross-check using humid-air routine ---
+  T_dp_HA    = HAPropsSI("D","T",T_1,"P",P,"R",phi_1)
+  T_dp_HA_F  = (T_dp_HA - 273.15) * (9/5) + 32
+
+report:
+  T_1_C, T_1
+  P_sat_1, P_v_1
+  T_dp, T_dp_F
+  T_dp_HA, T_dp_HA_F
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-9
+  max_iter = 80

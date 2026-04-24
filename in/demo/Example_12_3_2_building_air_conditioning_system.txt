@@ -1,0 +1,124 @@
+title: Klein & Nellis Example 12.3-2 — Building Air Conditioning System (revisited) — HAPropsSI humid air — TDPy
+
+given:
+  # --- universal constants ---
+  R_u = 8314.462618                 # J/(kmol*K)
+  atm_to_Pa = 101325.0              # Pa/atm
+
+  # --- unit conversions (unrolled) ---
+  cfm_to_m3ps = 0.00047194745       # (m^3/s)/cfm
+  gal_per_m3 = 264.1720523581484    # US gal / m^3
+  sec_per_hr = 3600.0               # s/hr
+  m3ps_to_gph = gal_per_m3*sec_per_hr
+
+  # --- inputs (from the book) ---
+  V_dot1 = 100.0*cfm_to_m3ps        # m^3/s (volumetric flow rate entering chilled water coil)
+  P = 1.0*atm_to_Pa                 # Pa
+
+  # temperatures (F -> K)
+  T1 = (95.0 - 32.0)*(5.0/9.0) + 273.15    # K (outdoor air)
+  T2 = (45.0 - 32.0)*(5.0/9.0) + 273.15    # K (leaving chilled-water coil)
+  T3 = (65.0 - 32.0)*(5.0/9.0) + 273.15    # K (leaving steam coil)
+
+  # relative humidities
+  phi1 = 0.70                       # -
+  phi2 = 1.00                       # -  (saturated at coil outlet)
+
+equations:
+  # ---- state 1: (T1, P, phi1) ----
+  omega1 = HAPropsSI("W","T",T1,"P",P,"R",phi1) + 0.0*eps
+  v_av1  = HAPropsSI("Vda","T",T1,"P",P,"R",phi1) + 0.0*eps
+  h_av1  = HAPropsSI("Hda","T",T1,"P",P,"R",phi1) + 0.0*eps
+
+  m_dot_a = V_dot1 / v_av1
+
+  T_dp = HAPropsSI("Tdp","T",T1,"P",P,"R",phi1) + 0.0*eps
+  T_dp_C = T_dp - 273.15
+
+  # ---- state 2: (T2, P, saturated) ----
+  omega2 = HAPropsSI("W","T",T2,"P",P,"R",phi2) + 0.0*eps
+  h_av2  = HAPropsSI("Hda","T",T2,"P",P,"R",phi2) + 0.0*eps
+
+  m_dot_c = m_dot_a*(omega1 - omega2)
+
+  v_c = 1.0/PropsSI("D","T",T2,"P",P,"Water") + 0.0*eps
+  V_dot_c = m_dot_c * v_c
+  V_dot_c_gph = V_dot_c * m3ps_to_gph
+
+  # ---- state 3: (T3, P, omega3=omega2) ----
+  omega3 = omega2
+  phi3 = HAPropsSI("RH","T",T3,"P",P,"W",omega3) + 0.0*eps
+  h_av3 = HAPropsSI("Hda","T",T3,"P",P,"W",omega3) + 0.0*eps
+
+  # ---- heat transfers ----
+  Q_dot_cwc = m_dot_a*(h_av1 - h_av2)
+  Q_dot_stm = m_dot_a*(h_av3 - h_av2)
+
+  Q_dot_cwc_kW = Q_dot_cwc/1000.0
+  Q_dot_stm_kW = Q_dot_stm/1000.0
+
+  # ---- anti-constant-fold anchor (forces solver to keep equations as unknowns) ----
+  eps = 0.0*omega1
+
+guesses:
+  # dummy
+  ? eps = 0.0
+
+  # state 1
+  ? omega1 = 0.020
+  ? v_av1  = 0.90
+  ? h_av1  = 60000.0
+
+  ? m_dot_a = 0.10
+  ? T_dp = 290.0
+  ? T_dp_C = 15.0
+
+  # state 2
+  ? omega2 = 0.008
+  ? h_av2  = 30000.0
+
+  ? m_dot_c = 0.001
+  ? v_c = 0.001
+  ? V_dot_c = 1.0e-6
+  ? V_dot_c_gph = 1.0
+
+  # state 3
+  ? omega3 = 0.008
+  ? phi3 = 0.40
+  ? h_av3 = 45000.0
+
+  # heat transfers
+  ? Q_dot_cwc = 3000.0
+  ? Q_dot_stm = 2000.0
+  ? Q_dot_cwc_kW = 3.0
+  ? Q_dot_stm_kW = 2.0
+
+report:
+  # inputs
+  V_dot1, P
+  T1, T2, T3
+  phi1
+
+  # state 1
+  omega1, v_av1, h_av1
+  m_dot_a
+  T_dp, T_dp_C
+
+  # state 2
+  omega2, h_av2
+  m_dot_c
+  v_c
+  V_dot_c, V_dot_c_gph
+
+  # state 3
+  omega3, phi3, h_av3
+
+  # loads
+  Q_dot_cwc_kW, Q_dot_stm_kW
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 400
+  max_restarts = 2

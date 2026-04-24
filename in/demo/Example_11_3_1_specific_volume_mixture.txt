@@ -1,0 +1,151 @@
+title: Klein & Nellis Example 11.3-1 — Specific Volume of a Gas Mixture — SRK EOS (Dalton / Amagat / Kay / Mixing Rules) — TDPy
+
+given:
+  # ------------------------------------------------------------
+  # Inputs
+  # ------------------------------------------------------------
+  T = 150.0 + 273.15          # K
+  P_kPa = 10000.0             # kPa
+  P = P_kPa * 1000.0          # Pa
+
+  # Components: CarbonDioxide (1), Ammonia (2)
+  y_CO2 = 0.20
+  y_NH3 = 0.80
+
+  # Universal gas constant on kmol basis (EES R#)
+  R_u = 8314.462618           # J/(kmol*K)
+
+  # Ideal-gas molar specific volume (for reference / good initial guess)
+  v_bar_ideal = R_u*T/P       # m^3/kmol
+
+  # ------------------------------------------------------------
+  # Critical properties + acentric factor (use values consistent with your database)
+  # NOTE: These are typical values. If you want exact match to EES tables,
+  #       replace these with the exact numbers EES uses (or switch to PropsSI).
+  # ------------------------------------------------------------
+  Tcrit_CO2 = 304.1282        # K
+  Pcrit_CO2 = 7377300.0       # Pa
+  omega_CO2 = 0.22394         # -
+
+  Tcrit_NH3 = 405.40          # K
+  Pcrit_NH3 = 11333000.0      # Pa
+  omega_NH3 = 0.25600         # -
+
+  # ------------------------------------------------------------
+  # SRK parameters (Soave alpha)
+  #   m = 0.480 + 1.574*ω - 0.176*ω^2
+  #   alpha = (1 + m*(1 - sqrt(Tr)))^2
+  #   a = 0.42747 * alpha * R^2 * Tc^2 / Pc
+  #   b = 0.08664 * R * Tc / Pc
+  # EOS form used in book:
+  #   P = R*T/(v - b) - a/(v*(v + b))
+  # ------------------------------------------------------------
+  m_CO2 = 0.480 + 1.574*omega_CO2 - 0.176*omega_CO2^2
+  Tr_CO2 = T / Tcrit_CO2
+  alpha_CO2 = (1.0 + m_CO2*(1.0 - sqrt(Tr_CO2)))^2
+  a_CO2 = 0.42747 * alpha_CO2 * R_u^2 * Tcrit_CO2^2 / Pcrit_CO2
+  b_CO2 = 0.08664 * R_u * Tcrit_CO2 / Pcrit_CO2
+
+  m_NH3 = 0.480 + 1.574*omega_NH3 - 0.176*omega_NH3^2
+  Tr_NH3 = T / Tcrit_NH3
+  alpha_NH3 = (1.0 + m_NH3*(1.0 - sqrt(Tr_NH3)))^2
+  a_NH3 = 0.42747 * alpha_NH3 * R_u^2 * Tcrit_NH3^2 / Pcrit_NH3
+  b_NH3 = 0.08664 * R_u * Tcrit_NH3 / Pcrit_NH3
+
+  # ------------------------------------------------------------
+  # Kay's rule effective properties
+  # ------------------------------------------------------------
+  Tcrit_eff = y_CO2*Tcrit_CO2 + y_NH3*Tcrit_NH3
+  Pcrit_eff = y_CO2*Pcrit_CO2 + y_NH3*Pcrit_NH3
+  omega_eff = y_CO2*omega_CO2 + y_NH3*omega_NH3
+
+  m_eff = 0.480 + 1.574*omega_eff - 0.176*omega_eff^2
+  Tr_eff = T / Tcrit_eff
+  alpha_eff = (1.0 + m_eff*(1.0 - sqrt(Tr_eff)))^2
+  a_eff = 0.42747 * alpha_eff * R_u^2 * Tcrit_eff^2 / Pcrit_eff
+  b_eff = 0.08664 * R_u * Tcrit_eff / Pcrit_eff
+
+  # ------------------------------------------------------------
+  # Mixing rules (SRK)
+  #   a_mix = ( sum_i y_i * sqrt(a_i) )^2
+  #   b_mix = sum_i y_i * b_i
+  # ------------------------------------------------------------
+  a_mix = (y_CO2*sqrt(a_CO2) + y_NH3*sqrt(a_NH3))^2
+  b_mix = y_CO2*b_CO2 + y_NH3*b_NH3
+
+equations:
+  # ------------------------------------------------------------
+  # Dalton's law estimate:
+  #   v_i = v_bar_D / y_i
+  #   P = sum_i P_i(v_i; a_i, b_i)
+  # ------------------------------------------------------------
+  P = (R_u*T/((v_bar_D/y_CO2) - b_CO2) - a_CO2/((v_bar_D/y_CO2)*((v_bar_D/y_CO2) + b_CO2))) + (R_u*T/((v_bar_D/y_NH3) - b_NH3) - a_NH3/((v_bar_D/y_NH3)*((v_bar_D/y_NH3) + b_NH3)))
+
+  Z_D = P*v_bar_D/(R_u*T)
+
+  # ------------------------------------------------------------
+  # Amagat's law estimate:
+  #   Solve each pure-gas SRK at same T,P for v_bar_A_CO2 and v_bar_A_NH3
+  #   then v_bar_A = sum y_i v_i
+  # ------------------------------------------------------------
+  P = R_u*T/(v_bar_A_CO2 - b_CO2) - a_CO2/(v_bar_A_CO2*(v_bar_A_CO2 + b_CO2))
+  P = R_u*T/(v_bar_A_NH3 - b_NH3) - a_NH3/(v_bar_A_NH3*(v_bar_A_NH3 + b_NH3))
+  v_bar_A = y_CO2*v_bar_A_CO2 + y_NH3*v_bar_A_NH3
+  Z_A = P*v_bar_A/(R_u*T)
+
+  # ------------------------------------------------------------
+  # Kay's rule estimate:
+  #   Use pseudo-critical properties -> a_eff, b_eff -> solve SRK for v_bar_K
+  # ------------------------------------------------------------
+  P = R_u*T/(v_bar_K - b_eff) - a_eff/(v_bar_K*(v_bar_K + b_eff))
+  Z_K = P*v_bar_K/(R_u*T)
+
+  # ------------------------------------------------------------
+  # Mixing-rule estimate:
+  #   a_mix, b_mix -> solve SRK for v_bar_MR
+  # ------------------------------------------------------------
+  P = R_u*T/(v_bar_MR - b_mix) - a_mix/(v_bar_MR*(v_bar_MR + b_mix))
+  Z_MR = P*v_bar_MR/(R_u*T)
+
+guesses:
+  # Keep guesses > b_* to avoid division blowups
+  ? v_bar_D = v_bar_ideal
+  ? Z_D = 1.0
+
+  ? v_bar_A_CO2 = v_bar_ideal
+  ? v_bar_A_NH3 = v_bar_ideal
+  ? v_bar_A = v_bar_ideal
+  ? Z_A = 1.0
+
+  ? v_bar_K = v_bar_ideal
+  ? Z_K = 1.0
+
+  ? v_bar_MR = v_bar_ideal
+  ? Z_MR = 1.0
+
+report:
+  # Inputs
+  T, P_kPa, P
+  y_CO2, y_NH3
+  R_u, v_bar_ideal
+
+  # SRK pure params
+  Tcrit_CO2, Pcrit_CO2, omega_CO2, a_CO2, b_CO2
+  Tcrit_NH3, Pcrit_NH3, omega_NH3, a_NH3, b_NH3
+
+  # Kay + mixing params
+  Tcrit_eff, Pcrit_eff, omega_eff, a_eff, b_eff
+  a_mix, b_mix
+
+  # Results
+  v_bar_D, Z_D
+  v_bar_A_CO2, v_bar_A_NH3, v_bar_A, Z_A
+  v_bar_K, Z_K
+  v_bar_MR, Z_MR
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 600
+  max_restarts = 2

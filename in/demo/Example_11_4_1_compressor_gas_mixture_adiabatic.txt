@@ -1,0 +1,321 @@
+title: Klein & Nellis Example 11.4-1 (Part c) — Adiabatic Compressor with Gas Mixture — PR EOS (unrolled, corrected mixture props) — TDPy
+
+given:
+  # --- inputs ---
+  R_u = 8314.462618                 # J/(kmol*K)
+  atm_to_Pa = 101325.0              # Pa/atm
+
+  T_in = 273.15                     # K   (0 C)
+  P_in  = 10.0  * atm_to_Pa         # Pa
+  P_out = 100.0 * atm_to_Pa         # Pa
+
+  y1 = 0.5                          # CH4 mole fraction
+  y2 = 0.2                          # N2  mole fraction
+  y3 = 0.3                          # C2H6 mole fraction
+
+  m_dot = 10.0/60.0                 # kg/s  (10 kg/min)
+
+  # --- molecular weights (kg/kmol) ---
+  MW1 = 16.043                      # CH4
+  MW2 = 28.0134                     # N2
+  MW3 = 30.069                      # C2H6
+
+  MW_mix = y1*MW1 + y2*MW2 + y3*MW3 # kg/kmol
+  n_dot  = m_dot / MW_mix           # kmol/s
+
+  # --- critical properties + acentric factors + critical molar volumes ---
+  Tcrit1 = 190.564                  # K
+  Pcrit1 = 4599200.0                # Pa
+  vcrit1 = 0.0986                   # m^3/kmol
+  omega1 = 0.01142
+
+  Tcrit2 = 126.192                  # K
+  Pcrit2 = 3395800.0                # Pa
+  vcrit2 = 0.0894                   # m^3/kmol
+  omega2 = 0.0372
+
+  Tcrit3 = 305.322                  # K
+  Pcrit3 = 4872200.0                # Pa
+  vcrit3 = 0.1458                   # m^3/kmol
+  omega3 = 0.0995
+
+  # --- ideal-solution entropy of mixing term (J/kmol-K) ---
+  s_mix_ideal = -R_u*(y1*ln(y1) + y2*ln(y2) + y3*ln(y3))
+
+  # --- interaction parameters k_ij (Eq. 11-80; symmetric) ---
+  k12 = 1.0 - ( 2.0*((vcrit1*vcrit2)**(1.0/6.0)) / ( (vcrit1**(1.0/3.0)) + (vcrit2**(1.0/3.0)) ) )**3
+  k13 = 1.0 - ( 2.0*((vcrit1*vcrit3)**(1.0/6.0)) / ( (vcrit1**(1.0/3.0)) + (vcrit3**(1.0/3.0)) ) )**3
+  k23 = 1.0 - ( 2.0*((vcrit2*vcrit3)**(1.0/6.0)) / ( (vcrit2**(1.0/3.0)) + (vcrit3**(1.0/3.0)) ) )**3
+
+  # --- inlet PR 'ab' (unrolled) at T_in ---
+  Tr1_in = T_in/Tcrit1
+  m1_in = 0.37464 + 1.54226*omega1 - 0.26992*omega1**2
+  alpha1_in = (1.0 + m1_in*(1.0 - sqrt(Tr1_in)))**2
+  a1_in = 0.45724*(R_u**2)*(Tcrit1**2)/Pcrit1*alpha1_in
+  b1_in = 0.07780*R_u*Tcrit1/Pcrit1
+  dalpha_dT1_in = -m1_in*sqrt(alpha1_in/Tr1_in)/Tcrit1
+  da_dT1_in = 0.45724*(R_u**2)*(Tcrit1**2)*dalpha_dT1_in/Pcrit1
+
+  Tr2_in = T_in/Tcrit2
+  m2_in = 0.37464 + 1.54226*omega2 - 0.26992*omega2**2
+  alpha2_in = (1.0 + m2_in*(1.0 - sqrt(Tr2_in)))**2
+  a2_in = 0.45724*(R_u**2)*(Tcrit2**2)/Pcrit2*alpha2_in
+  b2_in = 0.07780*R_u*Tcrit2/Pcrit2
+  dalpha_dT2_in = -m2_in*sqrt(alpha2_in/Tr2_in)/Tcrit2
+  da_dT2_in = 0.45724*(R_u**2)*(Tcrit2**2)*dalpha_dT2_in/Pcrit2
+
+  Tr3_in = T_in/Tcrit3
+  m3_in = 0.37464 + 1.54226*omega3 - 0.26992*omega3**2
+  alpha3_in = (1.0 + m3_in*(1.0 - sqrt(Tr3_in)))**2
+  a3_in = 0.45724*(R_u**2)*(Tcrit3**2)/Pcrit3*alpha3_in
+  b3_in = 0.07780*R_u*Tcrit3/Pcrit3
+  dalpha_dT3_in = -m3_in*sqrt(alpha3_in/Tr3_in)/Tcrit3
+  da_dT3_in = 0.45724*(R_u**2)*(Tcrit3**2)*dalpha_dT3_in/Pcrit3
+
+  # --- inlet mixing rules (PR) ---
+  b_eff_in = y1*b1_in + y2*b2_in + y3*b3_in
+
+  a_12_in = (1.0-k12)*sqrt(a1_in)*sqrt(a2_in)
+  a_13_in = (1.0-k13)*sqrt(a1_in)*sqrt(a3_in)
+  a_23_in = (1.0-k23)*sqrt(a2_in)*sqrt(a3_in)
+
+  a_eff_in = (y1*y1)*a1_in + (y2*y2)*a2_in + (y3*y3)*a3_in + 2.0*y1*y2*a_12_in + 2.0*y1*y3*a_13_in + 2.0*y2*y3*a_23_in
+
+  da_dT_11_in = (y1*y1)*da_dT1_in
+  da_dT_22_in = (y2*y2)*da_dT2_in
+  da_dT_33_in = (y3*y3)*da_dT3_in
+  da_dT_12_in = y1*y2*(1.0-k12)*(sqrt(a2_in/a1_in)*da_dT1_in + sqrt(a1_in/a2_in)*da_dT2_in)/2.0
+  da_dT_13_in = y1*y3*(1.0-k13)*(sqrt(a3_in/a1_in)*da_dT1_in + sqrt(a1_in/a3_in)*da_dT3_in)/2.0
+  da_dT_23_in = y2*y3*(1.0-k23)*(sqrt(a3_in/a2_in)*da_dT2_in + sqrt(a2_in/a3_in)*da_dT3_in)/2.0
+  da_dT_eff_in = da_dT_11_in + da_dT_22_in + da_dT_33_in + 2.0*da_dT_12_in + 2.0*da_dT_13_in + 2.0*da_dT_23_in
+
+  # --- inlet dimensionless PR parameters A and B ---
+  AA_in1 = a1_in*P_in /( (R_u**2)*(T_in**2) )
+  BB_in1 = b1_in*P_in /( R_u*T_in )
+  AA_in2 = a2_in*P_in /( (R_u**2)*(T_in**2) )
+  BB_in2 = b2_in*P_in /( R_u*T_in )
+  AA_in3 = a3_in*P_in /( (R_u**2)*(T_in**2) )
+  BB_in3 = b3_in*P_in /( R_u*T_in )
+
+  AA_in = a_eff_in*P_in /( (R_u**2)*(T_in**2) )
+  BB_in = b_eff_in*P_in /( R_u*T_in )
+
+equations:
+  # --- ideal-gas (Cantera) pure-species properties at inlet (molar, J/kmol and J/kmol-K) ---
+  h_pure_in1 = CTPropsSI("HMOLAR","T",T_in,"P",P_in ,"gri30.yaml|X=CH4:1")
+  s_pure_in1 = CTPropsSI("SMOLAR","T",T_in,"P",P_in ,"gri30.yaml|X=CH4:1")
+  h_pure_in2 = CTPropsSI("HMOLAR","T",T_in,"P",P_in ,"gri30.yaml|X=N2:1")
+  s_pure_in2 = CTPropsSI("SMOLAR","T",T_in,"P",P_in ,"gri30.yaml|X=N2:1")
+  h_pure_in3 = CTPropsSI("HMOLAR","T",T_in,"P",P_in ,"gri30.yaml|X=C2H6:1")
+  s_pure_in3 = CTPropsSI("SMOLAR","T",T_in,"P",P_in ,"gri30.yaml|X=C2H6:1")
+
+  # --- PR cubic for compressibility factors Z (pure species, inlet) ---
+  Z_in1**3 - (1.0-BB_in1)*Z_in1**2 + (AA_in1-3.0*BB_in1**2-2.0*BB_in1)*Z_in1 - (AA_in1*BB_in1 - BB_in1**2 - BB_in1**3) = 0.0
+  Z_in2**3 - (1.0-BB_in2)*Z_in2**2 + (AA_in2-3.0*BB_in2**2-2.0*BB_in2)*Z_in2 - (AA_in2*BB_in2 - BB_in2**2 - BB_in2**3) = 0.0
+  Z_in3**3 - (1.0-BB_in3)*Z_in3**2 + (AA_in3-3.0*BB_in3**2-2.0*BB_in3)*Z_in3 - (AA_in3*BB_in3 - BB_in3**2 - BB_in3**3) = 0.0
+
+  # --- PR departure terms (pure species, inlet) ---
+  h_dep_in1 = R_u*T_in*(1.0-Z_in1) + (a1_in - T_in*da_dT1_in)/(2.0*sqrt(2.0)*b1_in)*ln((Z_in1+2.414*BB_in1)/(Z_in1-0.414*BB_in1))
+  s_dep_in1 = -R_u*ln(Z_in1-BB_in1) - (1.0/(2.0*sqrt(2.0)*b1_in))*da_dT1_in*ln((Z_in1+2.414*BB_in1)/(Z_in1-0.414*BB_in1))
+
+  h_dep_in2 = R_u*T_in*(1.0-Z_in2) + (a2_in - T_in*da_dT2_in)/(2.0*sqrt(2.0)*b2_in)*ln((Z_in2+2.414*BB_in2)/(Z_in2-0.414*BB_in2))
+  s_dep_in2 = -R_u*ln(Z_in2-BB_in2) - (1.0/(2.0*sqrt(2.0)*b2_in))*da_dT2_in*ln((Z_in2+2.414*BB_in2)/(Z_in2-0.414*BB_in2))
+
+  h_dep_in3 = R_u*T_in*(1.0-Z_in3) + (a3_in - T_in*da_dT3_in)/(2.0*sqrt(2.0)*b3_in)*ln((Z_in3+2.414*BB_in3)/(Z_in3-0.414*BB_in3))
+  s_dep_in3 = -R_u*ln(Z_in3-BB_in3) - (1.0/(2.0*sqrt(2.0)*b3_in))*da_dT3_in*ln((Z_in3+2.414*BB_in3)/(Z_in3-0.414*BB_in3))
+
+  # --- PR cubic + departures for mixture at inlet ---
+  Z_in**3 - (1.0-BB_in)*Z_in**2 + (AA_in-3.0*BB_in**2-2.0*BB_in)*Z_in - (AA_in*BB_in - BB_in**2 - BB_in**3) = 0.0
+  h_dep_in = R_u*T_in*(1.0-Z_in) + (a_eff_in - T_in*da_dT_eff_in)/(2.0*sqrt(2.0)*b_eff_in)*ln((Z_in+2.414*BB_in)/(Z_in-0.414*BB_in))
+  s_dep_in = -R_u*ln(Z_in-BB_in) - (1.0/(2.0*sqrt(2.0)*b_eff_in))*da_dT_eff_in*ln((Z_in+2.414*BB_in)/(Z_in-0.414*BB_in))
+  v_bar_in = Z_in*R_u*T_in/P_in
+
+  # --- corrected mixture enthalpy/entropy (same sign convention you used for parts a,b) ---
+  h_bar_in = (y1*h_pure_in1 + y2*h_pure_in2 + y3*h_pure_in3) - h_dep_in
+  s_bar_in = (y1*s_pure_in1 + y2*s_pure_in2 + y3*s_pure_in3) + s_mix_ideal - s_dep_in
+
+  # ============================================================================================
+  # OUTLET STATE (adiabatic => T_out unknown)
+  # ============================================================================================
+
+  # --- outlet PR 'ab' (unrolled) at T_out ---
+  Tr1_out = T_out/Tcrit1
+  m1_out = 0.37464 + 1.54226*omega1 - 0.26992*omega1**2
+  alpha1_out = (1.0 + m1_out*(1.0 - sqrt(Tr1_out)))**2
+  a1_out = 0.45724*(R_u**2)*(Tcrit1**2)/Pcrit1*alpha1_out
+  b1_out = 0.07780*R_u*Tcrit1/Pcrit1
+  dalpha_dT1_out = -m1_out*sqrt(alpha1_out/Tr1_out)/Tcrit1
+  da_dT1_out = 0.45724*(R_u**2)*(Tcrit1**2)*dalpha_dT1_out/Pcrit1
+
+  Tr2_out = T_out/Tcrit2
+  m2_out = 0.37464 + 1.54226*omega2 - 0.26992*omega2**2
+  alpha2_out = (1.0 + m2_out*(1.0 - sqrt(Tr2_out)))**2
+  a2_out = 0.45724*(R_u**2)*(Tcrit2**2)/Pcrit2*alpha2_out
+  b2_out = 0.07780*R_u*Tcrit2/Pcrit2
+  dalpha_dT2_out = -m2_out*sqrt(alpha2_out/Tr2_out)/Tcrit2
+  da_dT2_out = 0.45724*(R_u**2)*(Tcrit2**2)*dalpha_dT2_out/Pcrit2
+
+  Tr3_out = T_out/Tcrit3
+  m3_out = 0.37464 + 1.54226*omega3 - 0.26992*omega3**2
+  alpha3_out = (1.0 + m3_out*(1.0 - sqrt(Tr3_out)))**2
+  a3_out = 0.45724*(R_u**2)*(Tcrit3**2)/Pcrit3*alpha3_out
+  b3_out = 0.07780*R_u*Tcrit3/Pcrit3
+  dalpha_dT3_out = -m3_out*sqrt(alpha3_out/Tr3_out)/Tcrit3
+  da_dT3_out = 0.45724*(R_u**2)*(Tcrit3**2)*dalpha_dT3_out/Pcrit3
+
+  # --- outlet mixing rules (PR) ---
+  b_eff_out = y1*b1_out + y2*b2_out + y3*b3_out
+
+  a_12_out = (1.0-k12)*sqrt(a1_out)*sqrt(a2_out)
+  a_13_out = (1.0-k13)*sqrt(a1_out)*sqrt(a3_out)
+  a_23_out = (1.0-k23)*sqrt(a2_out)*sqrt(a3_out)
+
+  a_eff_out = (y1*y1)*a1_out + (y2*y2)*a2_out + (y3*y3)*a3_out + 2.0*y1*y2*a_12_out + 2.0*y1*y3*a_13_out + 2.0*y2*y3*a_23_out
+
+  da_dT_11_out = (y1*y1)*da_dT1_out
+  da_dT_22_out = (y2*y2)*da_dT2_out
+  da_dT_33_out = (y3*y3)*da_dT3_out
+  da_dT_12_out = y1*y2*(1.0-k12)*(sqrt(a2_out/a1_out)*da_dT1_out + sqrt(a1_out/a2_out)*da_dT2_out)/2.0
+  da_dT_13_out = y1*y3*(1.0-k13)*(sqrt(a3_out/a1_out)*da_dT1_out + sqrt(a1_out/a3_out)*da_dT3_out)/2.0
+  da_dT_23_out = y2*y3*(1.0-k23)*(sqrt(a3_out/a2_out)*da_dT2_out + sqrt(a2_out/a3_out)*da_dT3_out)/2.0
+  da_dT_eff_out = da_dT_11_out + da_dT_22_out + da_dT_33_out + 2.0*da_dT_12_out + 2.0*da_dT_13_out + 2.0*da_dT_23_out
+
+  # --- outlet dimensionless PR parameters A and B ---
+  AA_out1 = a1_out*P_out/( (R_u**2)*(T_out**2) )
+  BB_out1 = b1_out*P_out/( R_u*T_out )
+  AA_out2 = a2_out*P_out/( (R_u**2)*(T_out**2) )
+  BB_out2 = b2_out*P_out/( R_u*T_out )
+  AA_out3 = a3_out*P_out/( (R_u**2)*(T_out**2) )
+  BB_out3 = b3_out*P_out/( R_u*T_out )
+
+  AA_out = a_eff_out*P_out/( (R_u**2)*(T_out**2) )
+  BB_out = b_eff_out*P_out/( R_u*T_out )
+
+  # --- ideal-gas (Cantera) pure-species properties at outlet ---
+  h_pure_out1 = CTPropsSI("HMOLAR","T",T_out,"P",P_out,"gri30.yaml|X=CH4:1")
+  s_pure_out1 = CTPropsSI("SMOLAR","T",T_out,"P",P_out,"gri30.yaml|X=CH4:1")
+  h_pure_out2 = CTPropsSI("HMOLAR","T",T_out,"P",P_out,"gri30.yaml|X=N2:1")
+  s_pure_out2 = CTPropsSI("SMOLAR","T",T_out,"P",P_out,"gri30.yaml|X=N2:1")
+  h_pure_out3 = CTPropsSI("HMOLAR","T",T_out,"P",P_out,"gri30.yaml|X=C2H6:1")
+  s_pure_out3 = CTPropsSI("SMOLAR","T",T_out,"P",P_out,"gri30.yaml|X=C2H6:1")
+
+  # --- PR cubics (pure species, outlet) ---
+  Z_out1**3 - (1.0-BB_out1)*Z_out1**2 + (AA_out1-3.0*BB_out1**2-2.0*BB_out1)*Z_out1 - (AA_out1*BB_out1 - BB_out1**2 - BB_out1**3) = 0.0
+  Z_out2**3 - (1.0-BB_out2)*Z_out2**2 + (AA_out2-3.0*BB_out2**2-2.0*BB_out2)*Z_out2 - (AA_out2*BB_out2 - BB_out2**2 - BB_out2**3) = 0.0
+  Z_out3**3 - (1.0-BB_out3)*Z_out3**2 + (AA_out3-3.0*BB_out3**2-2.0*BB_out3)*Z_out3 - (AA_out3*BB_out3 - BB_out3**2 - BB_out3**3) = 0.0
+
+  # --- PR departures (pure species, outlet) ---
+  h_dep_out1 = R_u*T_out*(1.0-Z_out1) + (a1_out - T_out*da_dT1_out)/(2.0*sqrt(2.0)*b1_out)*ln((Z_out1+2.414*BB_out1)/(Z_out1-0.414*BB_out1))
+  s_dep_out1 = -R_u*ln(Z_out1-BB_out1) - (1.0/(2.0*sqrt(2.0)*b1_out))*da_dT1_out*ln((Z_out1+2.414*BB_out1)/(Z_out1-0.414*BB_out1))
+
+  h_dep_out2 = R_u*T_out*(1.0-Z_out2) + (a2_out - T_out*da_dT2_out)/(2.0*sqrt(2.0)*b2_out)*ln((Z_out2+2.414*BB_out2)/(Z_out2-0.414*BB_out2))
+  s_dep_out2 = -R_u*ln(Z_out2-BB_out2) - (1.0/(2.0*sqrt(2.0)*b2_out))*da_dT2_out*ln((Z_out2+2.414*BB_out2)/(Z_out2-0.414*BB_out2))
+
+  h_dep_out3 = R_u*T_out*(1.0-Z_out3) + (a3_out - T_out*da_dT3_out)/(2.0*sqrt(2.0)*b3_out)*ln((Z_out3+2.414*BB_out3)/(Z_out3-0.414*BB_out3))
+  s_dep_out3 = -R_u*ln(Z_out3-BB_out3) - (1.0/(2.0*sqrt(2.0)*b3_out))*da_dT3_out*ln((Z_out3+2.414*BB_out3)/(Z_out3-0.414*BB_out3))
+
+  # --- PR cubic + departures for mixture at outlet ---
+  Z_out**3 - (1.0-BB_out)*Z_out**2 + (AA_out-3.0*BB_out**2-2.0*BB_out)*Z_out - (AA_out*BB_out - BB_out**2 - BB_out**3) = 0.0
+  h_dep_out = R_u*T_out*(1.0-Z_out) + (a_eff_out - T_out*da_dT_eff_out)/(2.0*sqrt(2.0)*b_eff_out)*ln((Z_out+2.414*BB_out)/(Z_out-0.414*BB_out))
+  s_dep_out = -R_u*ln(Z_out-BB_out) - (1.0/(2.0*sqrt(2.0)*b_eff_out))*da_dT_eff_out*ln((Z_out+2.414*BB_out)/(Z_out-0.414*BB_out))
+  v_bar_out = Z_out*R_u*T_out/P_out
+
+  h_bar_out = (y1*h_pure_out1 + y2*h_pure_out2 + y3*h_pure_out3) - h_dep_out
+  s_bar_out = (y1*s_pure_out1 + y2*s_pure_out2 + y3*s_pure_out3) + s_mix_ideal - s_dep_out
+
+  # --- adiabatic + reversible compressor ---
+  Q_dot_out = 0.0 + 0.0*T_out
+  Q_dot_out_kW = Q_dot_out/1000.0
+
+  s_bar_out = s_bar_in
+  W_dot = n_dot*(h_bar_out - h_bar_in)
+  W_dot_kW = W_dot/1000.0
+
+guesses:
+  # outlet temperature guess (book suggests starting with T_in + 150 K; solution ~440 K)
+  ? T_out = 423.15
+
+  # inlet PR Z guesses (gas-like root)
+  ? Z_in1 = 0.97
+  ? Z_in2 = 0.99
+  ? Z_in3 = 0.90
+  ? Z_in  = 0.96
+
+  # outlet PR Z guesses (gas-like root)
+  ? Z_out1 = 0.85
+  ? Z_out2 = 0.97
+  ? Z_out3 = 0.65
+  ? Z_out  = 0.85
+
+  # departures / mixture props (rough)
+  ? h_dep_in1 = 2.1e5
+  ? s_dep_in1 = 5.3e2
+  ? h_dep_in2 = 9.0e4
+  ? s_dep_in2 = 2.7e2
+  ? h_dep_in3 = 7.3e5
+  ? s_dep_in3 = 1.7e3
+  ? h_dep_in  = 2.9e5
+  ? s_dep_in  = 7.2e2
+
+  ? h_dep_out1 = 1.5e6
+  ? s_dep_out1 = 4.0e3
+  ? h_dep_out2 = 5.0e5
+  ? s_dep_out2 = 1.6e3
+  ? h_dep_out3 = 5.0e6
+  ? s_dep_out3 = 1.2e4
+  ? h_dep_out  = 2.0e6
+  ? s_dep_out  = 5.0e3
+
+  ? v_bar_in  = 2.15
+  ? v_bar_out = 0.35
+
+  # Cantera ideal-gas props (warm-start will overwrite; leave 0s)
+  ? h_pure_in1 = 0.0
+  ? s_pure_in1 = 0.0
+  ? h_pure_in2 = 0.0
+  ? s_pure_in2 = 0.0
+  ? h_pure_in3 = 0.0
+  ? s_pure_in3 = 0.0
+  ? h_pure_out1 = 0.0
+  ? s_pure_out1 = 0.0
+  ? h_pure_out2 = 0.0
+  ? s_pure_out2 = 0.0
+  ? h_pure_out3 = 0.0
+  ? s_pure_out3 = 0.0
+
+  # power
+  ? W_dot = 48000.0
+  ? W_dot_kW = 48.0
+  ? Q_dot_out = 0.0
+  ? Q_dot_out_kW = 0.0
+
+report:
+  # inputs
+  T_in, P_in, P_out, m_dot
+  y1, y2, y3
+  MW_mix, n_dot
+
+  # inlet mixture PR parameters
+  a_eff_in, b_eff_in, da_dT_eff_in
+
+  # outlet mixture PR parameters
+  a_eff_out, b_eff_out, da_dT_eff_out
+
+  # inlet state
+  Z_in, v_bar_in
+  h_bar_in, s_bar_in
+
+  # outlet state
+  T_out
+  Z_out, v_bar_out
+  h_bar_out, s_bar_out
+
+  # adiabatic compressor
+  Q_dot_out_kW, W_dot_kW
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 1200
+  max_restarts = 2

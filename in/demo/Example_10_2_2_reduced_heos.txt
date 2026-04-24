@@ -1,0 +1,140 @@
+title: Klein & Nellis Example 10.2-2 — Reduced Helmholtz EOS (CO2) — unrolled — TDPy
+
+given:
+  # --- constants ---
+  fluid = "CarbonDioxide"
+  R_u = 8314.462618                 # J/(kmol*K)
+
+  # --- state ---
+  T = 350.0                         # K
+  v = 0.01                          # m^3/kg  (specific volume)
+
+  # --- CO2 critical properties (mass basis) ---
+  # Values consistent with typical EES/CoolProp constants for CO2:
+  T_crit = 304.1282                 # K
+  rho_crit = 467.6                  # kg/m^3
+  v_crit = 1.0/rho_crit             # m^3/kg
+
+  # --- molar mass + gas constant (mass basis) ---
+  MW = 44.0095                      # kg/kmol
+  R = R_u/MW                        # J/(kg*K)
+
+  # --- unit helper ---
+  Pa_to_kPa = 0.001
+
+  # --- CO2 reduced-Helmholtz coefficients (as in the textbook example) ---
+  a1 = 8.37304456
+  a2 = -3.70454304
+  a3 = 2.5
+  a4 = 1.99427042
+  a5 = 0.62105248
+  a6 = 0.41195293
+  a7 = 1.04028922
+  a8 = 0.08327678
+
+  th4 = 3.15163
+  th5 = 6.11190
+  th6 = 6.77708
+  th7 = 11.32384
+  th8 = 27.08792
+
+  n1  = 0.89875108
+  n2  = -2.1281985
+  n3  = -0.068190320
+  n4  = 0.076355306
+  n5  = 0.00022053253
+  n6  = 0.41541823
+  n7  = 0.71335657
+  n8  = 0.00030354234
+  n9  = -0.36643143
+  n10 = -0.0014407781
+  n11 = -0.089166707
+  n12 = -0.023699887
+
+equations:
+  # --- reduced variables ---
+  rho = 1.0/v
+  delta = v_crit/v
+  tau = T_crit/T
+
+  # --- ∂alpha_res/∂delta |tau (from Maple, as provided in the book) ---
+  dalpha_resddelta_tau = n1*tau**0.25 + n2*tau**1.25 + n3*tau**1.5 + 3.0*n4*delta**2*tau**0.25 + 7.0*n5*delta**6*tau**0.875 + n6*tau**2.375*exp(-delta) - n6*delta*tau**2.375*exp(-delta) + 2.0*n7*delta*tau**2.0*exp(-delta) - n7*delta**2*tau**2.0*exp(-delta) + 5.0*n8*delta**4*tau**2.125*exp(-delta) - n8*delta**5*tau**2.125*exp(-delta) + n9*tau**3.5*exp(-delta**2) - 2.0*n9*delta**2*tau**3.5*exp(-delta**2) + n10*tau**6.5*exp(-delta**2) - 2.0*n10*delta**2*tau**6.5*exp(-delta**2) + 4.0*n11*delta**3*tau**4.75*exp(-delta**2) - 2.0*n11*delta**5*tau**4.75*exp(-delta**2) + 2.0*n12*delta*tau**12.5*exp(-delta**3) - 3.0*n12*delta**4*tau**12.5*exp(-delta**3)
+
+  # --- pressure from reduced Helmholtz EOS ---
+  P = R*T*rho*(1.0 + delta*dalpha_resddelta_tau)
+  P_kPa = P*Pa_to_kPa
+
+  # --- pressure from CoolProp (EES analog) at (T, v) ---
+  P_EES = PropsSI("P","T",T,"D",rho,fluid)
+  P_EES_kPa = P_EES*Pa_to_kPa
+
+  dP = P - P_EES
+  dP_kPa = dP*Pa_to_kPa
+
+  # --- ∂alpha_IG/∂tau |delta (from Maple, as provided) ---
+  dalpha_IGdtau_delta = a2 + a3/tau + a4*th4*exp(-tau*th4)/(1.0-exp(-tau*th4)) + a5*th5*exp(-tau*th5)/(1.0-exp(-tau*th5)) + a6*th6*exp(-tau*th6)/(1.0-exp(-tau*th6)) + a7*th7*exp(-tau*th7)/(1.0-exp(-tau*th7)) + a8*th8*exp(-tau*th8)/(1.0-exp(-tau*th8))
+
+  # --- ∂alpha_res/∂tau |delta (from Maple, as provided) ---
+  dalpha_resdtau_delta = 0.25*n1*delta/tau**0.75 + 1.25*n2*delta*tau**0.25 + 1.5*n3*delta*tau**0.5 + 0.25*n4*delta**3/tau**0.75 + 0.875*n5*delta**7/tau**0.125 + 2.375*n6*delta*tau**1.375*exp(-delta) + 2.0*n7*delta**2*tau*exp(-delta) + 2.125*n8*delta**5*tau**1.125*exp(-delta) + 3.5*n9*delta*tau**2.5*exp(-delta**2) + 6.5*n10*delta*tau**5.5*exp(-delta**2) + 4.75*n11*delta**4*tau**3.75*exp(-delta**2) + 12.5*n12*delta**2*tau**11.5*exp(-delta**3)
+
+  # --- ∂alpha/∂tau |delta and internal energy ---
+  dalphadtau_delta = dalpha_IGdtau_delta + dalpha_resdtau_delta
+  u = R*T_crit*dalphadtau_delta
+  u_EES = PropsSI("U","T",T,"D",rho,fluid)
+  du = u - u_EES
+
+  # --- alpha_IG, alpha_res, alpha ---
+  alpha_IG = ln(delta) + a1 + a2*tau + a3*ln(tau) + a4*ln(1.0-exp(-tau*th4)) + a5*ln(1.0-exp(-tau*th5)) + a6*ln(1.0-exp(-tau*th6)) + a7*ln(1.0-exp(-tau*th7)) + a8*ln(1.0-exp(-tau*th8))
+  alpha_res = n1*delta*tau**0.25 + n2*delta*tau**1.25 + n3*delta*tau**1.5 + n4*delta**3*tau**0.25 + n5*delta**7*tau**0.875 + n6*delta*tau**2.375*exp(-delta) + n7*delta**2*tau**2.0*exp(-delta) + n8*delta**5*tau**2.125*exp(-delta) + n9*delta*tau**3.5*exp(-delta**2) + n10*delta*tau**6.5*exp(-delta**2) + n11*delta**4*tau**4.75*exp(-delta**2) + n12*delta**2*tau**12.5*exp(-delta**3)
+  alpha = alpha_IG + alpha_res
+
+  # --- entropy from reduced Helmholtz EOS ---
+  s = R*tau*dalphadtau_delta - alpha*R
+  s_EES = PropsSI("S","T",T,"D",rho,fluid)
+  ds = s - s_EES
+
+guesses:
+  # If you change v or T, these guesses still behave reasonably.
+  ? rho = 100.0
+  ? delta = 0.2
+  ? tau = 0.9
+
+  ? dalpha_resddelta_tau = 0.0
+  ? P = 1.0e6
+  ? P_kPa = 1000.0
+  ? P_EES = 1.0e6
+  ? P_EES_kPa = 1000.0
+  ? dP = 0.0
+  ? dP_kPa = 0.0
+
+  ? dalpha_IGdtau_delta = 0.0
+  ? dalpha_resdtau_delta = 0.0
+  ? dalphadtau_delta = 0.0
+
+  ? u = 0.0
+  ? u_EES = 0.0
+  ? du = 0.0
+
+  ? alpha_IG = 0.0
+  ? alpha_res = 0.0
+  ? alpha = 0.0
+
+  ? s = 0.0
+  ? s_EES = 0.0
+  ? ds = 0.0
+
+report:
+  fluid
+  T, v, rho
+  T_crit, v_crit, MW, R
+  tau, delta
+  P_kPa, P_EES_kPa, dP_kPa
+  u, u_EES, du
+  s, s_EES, ds
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 400
+  max_restarts = 2

@@ -1,0 +1,118 @@
+title: Klein & Nellis Example 10.4-1 — Properties of Isobutane using PR EOS (departure form; no subprograms) — TDPy
+
+given:
+  # --- universal constant ---
+  R_u = 8314.462618                 # J/(kmol*K)
+
+  # --- fluid for CoolProp ---
+  fluid = IsoButane
+
+  # --- reference state (given in EES program) ---
+  T_ref = 300.0                     # K
+  P_ref = 10000.0                   # Pa  (10 kPa)
+  h_ref = 605345.0                  # J/kg
+  s_ref = 2862.8                    # J/(kg*K)
+
+  # --- ideal-gas cp0/R model constants (given in EES program) ---
+  d = 2.285                         # [-]
+  e = 0.03157                       # 1/K
+
+  # --- target state (given in EES program) ---
+  T = 450.0                         # K
+  P = 10000000.0                    # Pa  (10 MPa)
+
+  # --- IsoButane properties (unrolled; from CoolProp fluid info) ---
+  MW = 58.1222                      # kg/kmol
+  R  = R_u/MW                       # J/(kg*K)
+
+  T_crit = 407.81                   # K
+  P_crit = 3629000.0166496336       # Pa
+  omega  = 0.183531783208           # [-]
+
+  # --- PR parameters (same form as book PR subprogram) ---
+  T_r = T/T_crit
+  m = 0.37464 + 1.54226*omega - 0.26992*(omega**2)
+  alpha = (1.0 + m*(1.0 - sqrt(T_r)))**2
+  a = 0.45724*(R**2)*(T_crit**2)*alpha/P_crit
+  b = 0.07780*R*T_crit/P_crit
+  dalpha_dT = -m*sqrt(alpha/T_r)/T_crit
+  da_dT = 0.45724*(R**2)*(T_crit**2)*dalpha_dT/P_crit
+
+  A_nd = a*P/((R**2)*(T**2))
+  B_nd = b*P/(R*T)
+
+  # --- ideal-gas quick guesses ---
+  v_ideal = R*T/P
+
+equations:
+  # PR cubic for Z (gas-like root)
+  Z**3 - (1.0-B_nd)*Z**2 + (A_nd - 3.0*(B_nd**2) - 2.0*B_nd)*Z - (A_nd*B_nd - (B_nd**2) - (B_nd**3)) = 0.0
+
+  # specific volume from Z
+  v = Z*R*T/P
+
+  # PR "departure" terms as used in Ch.11 PR subprogram (note sign convention)
+  h_dep = R*T*(1.0 - Z) + (a - T*da_dT)/(2.0*sqrt(2.0)*b)*ln((Z + 2.414*B_nd)/(Z - 0.414*B_nd))
+  s_dep = -R*ln(Z - B_nd) - (1.0/(2.0*sqrt(2.0)*b))*da_dT*ln((Z + 2.414*B_nd)/(Z - 0.414*B_nd))
+
+  # ideal-gas enthalpy/entropy relative to reference (as in EES program)
+  h_ig = h_ref + R*d*(T - T_ref) + R*e*(T*T - T_ref*T_ref)/2.0
+  s_ig = s_ref + R*d*ln(T/T_ref) + R*e*(T - T_ref) - R*ln(P/P_ref)
+
+  # real-fluid h,s,u from PR (consistent with the book's sign convention)
+  h = h_ig - h_dep
+  s = s_ig - s_dep
+  u = h - P*v
+
+  # CoolProp reference (full EOS) for comparison
+  h_CP = PropsSI("Hmass","T",T,"P",P,fluid)
+  s_CP = PropsSI("Smass","T",T,"P",P,fluid)
+  u_CP = PropsSI("Umass","T",T,"P",P,fluid)
+  v_CP = 1.0/PropsSI("Dmass","T",T,"P",P,fluid)
+
+  # differences
+  dh = h - h_CP
+  ds = s - s_CP
+  du = u - u_CP
+  dv = v - v_CP
+
+guesses:
+  ? Z = 0.6
+  ? v = v_ideal
+  ? h_dep = 100000.0
+  ? s_dep = 100.0
+  ? h_ig = 660000.0
+  ? s_ig = 2000.0
+  ? h = 560000.0
+  ? s = 1900.0
+  ? u = 500000.0
+  ? h_CP = 0.0
+  ? s_CP = 0.0
+  ? u_CP = 0.0
+  ? v_CP = v_ideal
+  ? dh = 0.0
+  ? ds = 0.0
+  ? du = 0.0
+  ? dv = 0.0
+
+report:
+  fluid
+  T, P
+  T_ref, P_ref
+  MW, R
+  T_crit, P_crit, omega
+  a, b, A_nd, B_nd
+  v_ideal
+  Z, v
+  h_ig, s_ig
+  h_dep, s_dep
+  h, s, u
+  h_CP, s_CP, u_CP, v_CP
+  dh, ds, du, dv
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 500
+  max_restarts = 2

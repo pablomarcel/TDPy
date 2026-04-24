@@ -1,0 +1,112 @@
+title: Klein & Nellis Example 12.1-1 (Building Air Conditioning System) — Part (e)
+
+given:
+  # Book inputs (English units shown in problem)
+  T_1_F = 95            # °F  outdoor air
+  phi_1 = 0.70          # -   relative humidity at state 1
+  V_dot_1_cfm = 100     # cfm volumetric flow rate entering chilled water coil
+
+  T_2_F = 45            # °F  air leaving chilled water coil (state 2)
+  P_atm = 1.0           # atm total pressure
+
+  # Constants
+  eps = 0.622           # kg_v/kg_da (≈ Mw_v/Mw_a)
+  R_a = 287.058         # J/(kg·K) specific gas constant for dry air
+  cfm_to_m3s = 0.00047194745   # 1 cfm = 0.00047194745 m^3/s
+  m3_to_gal = 264.172052       # 1 m^3 = 264.172052 US gal
+
+# -----------------------------------------------------------------------------
+# IMPORTANT:
+# Part (e) uses a water mass balance across the chilled-water coil:
+#   m_dot_v,1 = m_dot_c + m_dot_v,2
+# where:
+#   m_dot_v,1 = omega_1 * m_dot_a    (from parts a/b)
+#   m_dot_v,2 = omega_2 * m_dot_a    (from part d, saturated at T2)
+#
+# We recompute omega_1, m_dot_a, omega_2 here so this file is standalone.
+# Guesses are kept physically sane so HAPropsSI/PropsSI never see nonsense.
+# -----------------------------------------------------------------------------
+
+guess:
+  # Temps (K)
+  T_1 = 308.15          # ~95°F
+  T_2 = 280.37          # ~45°F
+
+  # Pressures (Pa)
+  P = 101325.0
+  P_sat_1 = 6000.0
+  P_v_1 = 4000.0
+  P_a_1 = 97000.0
+  P_sat_2 = 1100.0
+  P_v_2 = 1100.0
+
+  # Humidity ratios (kg/kg dry air)
+  omega_1 = 0.025
+  omega_2 = 0.0063
+  omega_1_HA = 0.025
+  omega_2_HA = 0.0063
+
+  # Flow / mass rates
+  V_dot_1 = 0.047       # m^3/s
+  v_a_1 = 0.90          # m^3/kg_da
+  m_dot_a = 0.052       # kg_da/s
+  m_dot_v_1 = 0.00131   # kg_v/s
+  m_dot_v_2 = 0.00033   # kg_v/s
+  m_dot_c = 0.00098     # kg/s
+
+  # Condensate properties / volumetric flow
+  rho_c = 999.0         # kg/m^3
+  v_c = 0.0010          # m^3/kg
+  V_dot_c = 3.9e-7      # m^3/s
+  V_dot_c_gph = 0.93    # gal/hr
+
+equations:
+  # --- Unit conversions ---
+  T_1 = (T_1_F - 32) * (5/9) + 273.15
+  T_2 = (T_2_F - 32) * (5/9) + 273.15
+  P   = P_atm * 101325
+  V_dot_1 = V_dot_1_cfm * cfm_to_m3s
+
+  # --- State 1 (outdoor air): compute omega_1 ---
+  P_sat_1 = PropsSI("P","T",T_1,"Q",0,"Water")
+  P_v_1   = phi_1 * P_sat_1
+  omega_1 = eps * P_v_1 / (P - P_v_1)
+  omega_1_HA = HAPropsSI("W","T",T_1,"P",P,"R",phi_1)
+
+  # --- Dry-air mass flow rate (book part b) ---
+  P_a_1 = P - P_v_1
+  v_a_1 = R_a * T_1 / P_a_1
+  m_dot_a = V_dot_1 / v_a_1
+  m_dot_v_1 = omega_1 * m_dot_a
+
+  # --- State 2 (leaving chilled-water coil): saturated at T2 (phi2=1) ---
+  P_sat_2 = PropsSI("P","T",T_2,"Q",0,"Water")
+  P_v_2   = 1.0 * P_sat_2
+  omega_2 = eps * P_v_2 / (P - P_v_2)
+  omega_2_HA = HAPropsSI("W","T",T_2,"P",P,"R",1.0)
+  m_dot_v_2 = omega_2 * m_dot_a
+
+  # --- Water mass balance on coil (book part e) ---
+  m_dot_v_1 = m_dot_c + m_dot_v_2
+
+  # --- Condensate volumetric flow ---
+  rho_c = PropsSI("D","T",T_2,"P",P,"Water")
+  v_c = 1.0 / rho_c
+  V_dot_c = m_dot_c * v_c
+  V_dot_c_gph = V_dot_c * m3_to_gal * 3600
+
+report:
+  # State 1
+  P_sat_1, P_v_1, omega_1, omega_1_HA
+  # Dry-air / vapor flows
+  v_a_1, m_dot_a, m_dot_v_1
+  # State 2
+  P_sat_2, P_v_2, omega_2, omega_2_HA, m_dot_v_2
+  # Condensate
+  m_dot_c, rho_c, v_c, V_dot_c, V_dot_c_gph
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-9
+  max_iter = 80

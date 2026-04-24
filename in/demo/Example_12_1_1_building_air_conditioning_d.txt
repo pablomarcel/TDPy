@@ -1,0 +1,80 @@
+title: Klein & Nellis Example 12.1-1 (Building Air Conditioning System) — Part (d)
+
+given:
+  # From problem statement / prior parts
+  T_1_F = 95
+  phi_1 = 0.7
+
+  T_2_F = 45
+  P_atm = 1.0
+
+  # Constant
+  eps = 0.622
+
+# -----------------------------------------------------------------------------
+# NOTE:
+# We recompute dewpoint (part c) so part (d) is self-contained:
+# If T2 < Tdp, then state 2 is saturated => Pv2 = Psat(T2).
+#
+# IMPORTANT TDPy rule:
+# Avoid "A = B" alias assignments (RHS is a bare symbol) because the interpreter
+# may treat B as a string symbol constant. Use 1.0*B or B+0 instead.
+# -----------------------------------------------------------------------------
+
+guess:
+  # Temps (K)
+  T_1 = 308.15
+  T_2 = 280.37
+  T_dp = 302.0
+
+  # Pressures (Pa)
+  P = 101325.0
+  P_sat_1 = 6000.0
+  P_v_1 = 4000.0
+  P_sat_2 = 1100.0
+  P_v_2 = 1100.0
+
+  # Humidity ratios (kg/kg dry air)
+  omega_1 = 0.025
+  omega_2 = 0.0063
+  omega_2_HA = 0.0063
+
+equations:
+  # ---------------- Unit conversions ----------------
+  T_1 = (T_1_F - 32) * (5/9) + 273.15
+  T_2 = (T_2_F - 32) * (5/9) + 273.15
+  P   = P_atm * 101325
+
+  # ---------------- Part (a) core defs (for dewpoint) ----------------
+  P_sat_1 = PropsSI("P","T",T_1,"Q",0,"Water")
+  P_v_1   = phi_1 * P_sat_1
+  omega_1 = eps * P_v_1 / (P - P_v_1)
+
+  # ---------------- Part (c) dew point ----------------
+  T_dp = PropsSI("T","P",P_v_1,"Q",0,"Water")
+
+  # ---------------- Part (d) saturated at state 2 ----------------
+  P_sat_2 = PropsSI("P","T",T_2,"Q",0,"Water")
+
+  # DO NOT do: P_v_2 = P_sat_2   (bare-symbol alias -> may become a string)
+  P_v_2 = 1.0 * P_sat_2
+
+  omega_2 = eps * P_v_2 / (P - P_v_2)
+
+  # Cross-check with HAPropsSI at RH=1 (saturated)
+  omega_2_HA = HAPropsSI("W","T",T_2,"P",P,"R",1.0)
+
+report:
+  T_1, phi_1
+  P_sat_1, P_v_1, omega_1
+  T_dp
+  T_2
+  P_sat_2, P_v_2
+  omega_2
+  omega_2_HA
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-9
+  max_iter = 80

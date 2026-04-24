@@ -1,0 +1,253 @@
+title: Klein & Nellis Examples 12.5-1 + 12.5-2 — Cooling Tower + Entropy Generation (Option A: component/mix entropies on both moist-air states)
+
+given:
+  # -------------------- Given (book) --------------------
+  # Atmospheric pressure (tower assumed ~1 atm)
+  P = 101325.0                 # Pa
+
+  # Water from condenser -> tower (state 1)
+  T_w_in_F       = 95.0        # °F
+  V_dot_w_gal_hr = 6000.0      # gal/hr  circulating water volumetric flow rate
+
+  # Air entering tower (state 3)
+  T_amb_F     = 74.0           # °F
+  phi_amb     = 0.50           # [-]
+  V_dot_a_cfm = 10000.0        # cfm  air volumetric flow rate
+
+  # Makeup water (state 5)
+  T_muw_F = 80.0               # °F
+
+  # Cooling tower effectiveness
+  eff_ct  = 0.70               # [-]
+
+  # -------------------- Constants / conversions --------------------
+  C_to_K     = 273.15
+  ft_to_m    = 0.3048
+  min_to_s   = 60.0
+  s_to_hr    = 3600.0
+
+  m3_per_gal = 0.003785411784         # m^3 / US gal
+  W_per_ton  = 3516.8528420667        # W / ton refrigeration
+
+  # Psychrometric constants (for v_av formula)
+  R_da    = 287.055            # J/(kg_da*K)
+  kappa_W = 1.607858           # v_av ≈ R_da*T*(1+kappa_W*W)/P
+
+  # Example 12.6 / 12.5-2 mixture constant
+  MW_ratio = 0.622             # MW_v / MW_a
+
+# -----------------------------------------------------------------------------
+# Guesses: keep “HVAC-ish” to avoid thermo penalties on bad initial iterates.
+# -----------------------------------------------------------------------------
+guess:
+  # Temperatures (K)
+  T1 = 308.15      # 95 F  ~ 35 C
+  T3 = 296.15      # 74 F  ~ 23.3 C
+  T4 = 304.15      # leaving air (guess)
+  T2 = 296.40      # ~73.8 F (book-ish)
+  T5 = 299.82      # 80 F  ~ 26.7 C
+
+  # Moist air
+  omega3 = 0.009
+  omega4 = 0.028
+  h_av3  = 4.6e4
+  h_av4  = 1.0e5
+
+  # Air-side
+  v_av3   = 0.85
+  m_dot_a = 5.5
+
+  # Water-side
+  rho1    = 995.0
+  h1      = 1.47e5
+  m_dot_w = 6.3
+
+  rho5      = 997.0
+  h5        = 1.12e5
+  m_dot_muw = 0.107
+
+  # Results
+  Q_dot_ct  = 3.1e5
+  S_dot_gen = 19.0
+
+equations:
+  # =========================
+  # Example 12.5-1 (tower)
+  # =========================
+
+  # -------------------- Unit conversions (NO user-defined functions) --------------------
+  ft3_to_m3     = ft_to_m^3
+  cfm_to_m3s    = ft3_to_m3 / min_to_s
+  galhr_to_m3s  = m3_per_gal / s_to_hr
+
+  # Fahrenheit -> Kelvin (inline)
+  T1 = (T_w_in_F - 32.0)*5.0/9.0 + C_to_K
+  T3 = (T_amb_F  - 32.0)*5.0/9.0 + C_to_K
+  T5 = (T_muw_F  - 32.0)*5.0/9.0 + C_to_K
+
+  # Volumetric flow rates (SI)
+  V_dot_w = V_dot_w_gal_hr * galhr_to_m3s
+  V_dot_a = V_dot_a_cfm    * cfm_to_m3s
+
+  # -------------------- State 3: entering air --------------------
+  omega3 = HAPropsSI("W"  , "T", T3, "P", P, "R", phi_amb)
+  h_av3  = HAPropsSI("H"  , "T", T3, "P", P, "R", phi_amb)
+  T_wb3  = HAPropsSI("Twb", "T", T3, "P", P, "R", phi_amb)
+
+  # Dry-air specific volume (m^3/kg_da) and dry-air mass flow rate
+  v_av3   = R_da*T3*(1 + kappa_W*omega3)/P
+  m_dot_a = V_dot_a / v_av3
+
+  # -------------------- State 1: entering water --------------------
+  # IMPORTANT: PropsSI("V",...) is viscosity in CoolProp, not specific volume.
+  # Use density and invert.
+  rho1    = PropsSI("D", "T", T1, "P", P, "Water")     # kg/m^3
+  v1      = 1.0 / rho1                                 # m^3/kg
+  h1      = PropsSI("H", "T", T1, "P", P, "Water")     # J/kg
+  m_dot_w = V_dot_w / v1                                # kg/s
+
+  # -------------------- "Max" leaving-air state at (T1, RH=1) --------------------
+  h_av4_max  = HAPropsSI("H", "T", T1, "P", P, "R", 1.0)
+  omega4_max = HAPropsSI("W", "T", T1, "P", P, "R", 1.0)
+
+  # -------------------- Cooling tower effectiveness model --------------------
+  # Book form:
+  #   eff_ct = (h_av4  - h_av3 )/(h_av4_max  - h_av3)
+  #   eff_ct = (omega4 - omega3)/(omega4_max - omega3)
+  #
+  # Solve explicitly (linear) for numerical stability:
+  h_av4  = h_av3  + eff_ct*(h_av4_max  - h_av3)
+  omega4 = omega3 + eff_ct*(omega4_max - omega3)
+
+  # Leaving air state 4 from (P, h, omega)
+  T4   = HAPropsSI("T", "P", P, "W", omega4, "H", h_av4)
+  phi4 = HAPropsSI("R", "T", T4, "P", P, "W", omega4)
+
+  # -------------------- State 5: makeup water --------------------
+  rho5 = PropsSI("D", "T", T5, "P", P, "Water")        # kg/m^3
+  v5   = 1.0 / rho5                                     # m^3/kg
+  h5   = PropsSI("H", "T", T5, "P", P, "Water")        # J/kg
+
+  # Water mass balance: makeup replaces evaporation to air
+  m_dot_muw = m_dot_a*(omega4 - omega3)
+
+  # -------------------- Energy balance on cooling tower --------------------
+  # m_w*h1 + m_muw*h5 + m_a*h_av3 = m_w*h2 + m_a*h_av4
+  h2 = (m_dot_w*h1 + m_dot_muw*h5 + m_dot_a*h_av3 - m_dot_a*h_av4) / m_dot_w
+
+  # Water exit temperature (state 2)
+  T2 = PropsSI("T", "P", P, "H", h2, "Water")
+
+  # -------------------- Requested performance metrics (Ex 12.5-1) --------------------
+  Q_dot_ct = m_dot_w*(h1 - h2)
+
+  Q_dot_ct_kW  = Q_dot_ct / 1000.0
+  Q_dot_ct_ton = Q_dot_ct / W_per_ton
+
+  Range_K    = T1 - T2
+  Approach_K = T2 - T_wb3
+
+  # Convenience unit conversions
+  T2_F     = (T2    - C_to_K)*9.0/5.0 + 32.0
+  T4_F     = (T4    - C_to_K)*9.0/5.0 + 32.0
+  T_wb3_F  = (T_wb3 - C_to_K)*9.0/5.0 + 32.0
+
+  Range_F    = Range_K*9.0/5.0
+  Approach_F = Approach_K*9.0/5.0
+
+  # Makeup water volumetric flow (gal/hr)
+  V_dot_muw_m3s    = m_dot_muw * v5
+  V_dot_muw_gal_hr = V_dot_muw_m3s * s_to_hr / m3_per_gal
+
+
+  # =========================
+  # Example 12.5-2 (entropy generation)
+  # Option A: use component/mix-form on BOTH moist-air states (3 and 4)
+  # Uses: T1, T2, T5, T3, T4, omega3, omega4, m_dot_w, m_dot_muw, m_dot_a
+  # =========================
+
+  # -------------------- Water entropies (states 1,2,5) --------------------
+  # CoolProp uses a difference reference state than EES. Entropy values need to be double-checked against EES
+  s1 = PropsSI("S", "T", T1, "P", P, "Water")     # J/kg-K entering water
+  s2 = PropsSI("S", "T", T2, "P", P, "Water")     # J/kg-K leaving water
+  s5 = PropsSI("S", "T", T5, "P", P, "Water")     # J/kg-K makeup water
+
+  # -------------------- State 3 composition (Eqs 12-61, 12-57, 12-62) --------------------
+  y_v3 = 1 / (MW_ratio/omega3 + 1)
+  P_v3 = y_v3 * P
+  P_a3 = P - P_v3
+
+  # -------------------- State 3 component entropies and mixture entropy (Eq 12-56) --------------------
+  s_v3  = PropsSI("S", "T", T3, "P", P_v3, "Water")   # J/kg-K water vapor at partial pressure
+  s_a3  = PropsSI("S", "T", T3, "P", P_a3, "Air")     # J/kg-K dry air at partial pressure
+  s_av3 = s_a3 + omega3*s_v3                          # J/kg_da-K dry-air basis
+
+  # Optional EES "AirH2O" check (state 3): uses known phi_amb
+  s_av3_check = HAPropsSI("S", "T", T3, "P", P, "R", phi_amb)   # J/kg_da-K
+  s_av3_err   = s_av3 - s_av3_check
+
+  # -------------------- State 4 composition (same algebra as state 3) --------------------
+  y_v4 = 1 / (MW_ratio/omega4 + 1)
+  P_v4 = y_v4 * P
+  P_a4 = P - P_v4
+
+  # -------------------- State 4 component entropies and mixture entropy (Option A) --------------------
+  s_v4     = PropsSI("S", "T", T4, "P", P_v4, "Water")   # J/kg-K water vapor at partial pressure
+  s_a4     = PropsSI("S", "T", T4, "P", P_a4, "Air")     # J/kg-K dry air at partial pressure
+  s_av4_mix = s_a4 + omega4*s_v4                         # J/kg_da-K dry-air basis (Option A)
+
+  # Optional EES "AirH2O" check (state 4): diagnostic only (NOT used in balance)
+  s_av4_check = HAPropsSI("S", "T", T4, "P", P, "W", omega4)    # J/kg_da-K
+  s_av4_err   = s_av4_mix - s_av4_check
+
+  # -------------------- Entropy balance on cooling tower (Ex 12.5-2) --------------------
+  # m_dot_w*s1 + m_dot_muw*s5 + m_dot_a*s_av3 + S_dot_gen = m_dot_a*s_av4_mix + m_dot_w*s2
+  m_dot_w*s1 + m_dot_muw*s5 + m_dot_a*s_av3 + S_dot_gen = m_dot_a*s_av4_mix + m_dot_w*s2
+
+
+report:
+  # -------- Inputs --------
+  P
+  T_w_in_F, V_dot_w_gal_hr
+  T_amb_F, phi_amb, V_dot_a_cfm
+  T_muw_F
+  eff_ct
+
+  # -------- Ex 12.5-1 key results --------
+  omega3, h_av3, v_av3, m_dot_a
+  T_wb3, T_wb3_F
+
+  omega4, h_av4
+  T4, T4_F
+  phi4
+  omega4_max, h_av4_max
+
+  rho1, v1, m_dot_w
+  T2, T2_F
+  h1, h2
+  rho5, v5, h5
+
+  Q_dot_ct_kW, Q_dot_ct_ton
+  Range_K, Range_F
+  Approach_K, Approach_F
+  m_dot_muw
+  V_dot_muw_gal_hr
+
+  # -------- Ex 12.5-2 results (Option A) --------
+  s1, s2, s5
+
+  y_v3, P_v3, P_a3
+  s_a3, s_v3, s_av3
+  s_av3_check, s_av3_err
+
+  y_v4, P_v4, P_a4
+  s_a4, s_v4, s_av4_mix
+  s_av4_check, s_av4_err
+
+  S_dot_gen
+
+solve:
+  backend  = scipy
+  method   = hybr
+  tol      = 1e-9
+  max_iter = 120

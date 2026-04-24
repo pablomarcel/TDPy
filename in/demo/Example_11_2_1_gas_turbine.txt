@@ -1,0 +1,137 @@
+title: Klein & Nellis Example 11.2-1 — Power & Efficiency of a Gas Turbine — Cantera (CTPropsSI) — EES-style, fully reported
+
+given:
+  # ---- composition (given) ----
+  y_CO2 = 0.036
+  y_O2  = 0.131
+  y_H2O = 0.072
+
+  # ---- state + flow inputs ----
+  T_in    = 1204.0 + 273.15       # K
+  P_in    = 11.4 * 100000.0       # Pa
+  T_out   = 710.0 + 273.15        # K
+  P_out   = 101325.0              # Pa
+  V_dot_in = 1.7                  # m^3/s
+
+  # ---- constants ----
+  R_u   = 8314.462618             # J/(kmol*K)
+  P_ref = 101325.0                # Pa (pressure used for enthalpy calls; h(T) for ideal gas)
+
+  # ---- molar masses (kg/kmol) ----
+  MW_CO2 = 44.0095
+  MW_O2  = 31.9988
+  MW_H2O = 18.01528
+  MW_N2  = 28.0134
+
+equations:
+  # -------------------------------------------------------------------------
+  # (a) Mass flow rate
+  # -------------------------------------------------------------------------
+  y_N2 = 1.0 - y_CO2 - y_O2 - y_H2O
+
+  v_bar_in = R_u*T_in/P_in
+  n_dot    = V_dot_in / v_bar_in
+
+  MW    = y_CO2*MW_CO2 + y_O2*MW_O2 + y_H2O*MW_H2O + y_N2*MW_N2
+  m_dot = n_dot * MW
+
+  # -------------------------------------------------------------------------
+  # (b) Adiabatic turbine power output (EES Eq. 11-35 form)
+  #     h_bar = sum( y_i * h_i(T) )
+  # -------------------------------------------------------------------------
+  h_bar_in  = y_CO2*CTPropsSI("HMOLAR","T",T_in ,"P",P_ref,"gri30.yaml|X=CO2:1")
+           + y_O2 *CTPropsSI("HMOLAR","T",T_in ,"P",P_ref,"gri30.yaml|X=O2:1")
+           + y_H2O*CTPropsSI("HMOLAR","T",T_in ,"P",P_ref,"gri30.yaml|X=H2O:1")
+           + y_N2 *CTPropsSI("HMOLAR","T",T_in ,"P",P_ref,"gri30.yaml|X=N2:1")
+
+  h_bar_out = y_CO2*CTPropsSI("HMOLAR","T",T_out,"P",P_ref,"gri30.yaml|X=CO2:1")
+           + y_O2 *CTPropsSI("HMOLAR","T",T_out,"P",P_ref,"gri30.yaml|X=O2:1")
+           + y_H2O*CTPropsSI("HMOLAR","T",T_out,"P",P_ref,"gri30.yaml|X=H2O:1")
+           + y_N2 *CTPropsSI("HMOLAR","T",T_out,"P",P_ref,"gri30.yaml|X=N2:1")
+
+  W_dot_t    = n_dot * (h_bar_in - h_bar_out)
+  W_dot_t_MW = W_dot_t / 1000000.0
+
+  # -------------------------------------------------------------------------
+  # (c) Entropy generation rate (EES Eq. 11-41 form)
+  #     s_bar = sum( y_i * s_i(T, P*y_i) )
+  # -------------------------------------------------------------------------
+  s_bar_in  = y_CO2*CTPropsSI("SMOLAR","T",T_in ,"P",P_in*y_CO2 ,"gri30.yaml|X=CO2:1")
+           + y_O2 *CTPropsSI("SMOLAR","T",T_in ,"P",P_in*y_O2  ,"gri30.yaml|X=O2:1")
+           + y_H2O*CTPropsSI("SMOLAR","T",T_in ,"P",P_in*y_H2O ,"gri30.yaml|X=H2O:1")
+           + y_N2 *CTPropsSI("SMOLAR","T",T_in ,"P",P_in*y_N2  ,"gri30.yaml|X=N2:1")
+
+  s_bar_out = y_CO2*CTPropsSI("SMOLAR","T",T_out,"P",P_out*y_CO2,"gri30.yaml|X=CO2:1")
+           + y_O2 *CTPropsSI("SMOLAR","T",T_out,"P",P_out*y_O2 ,"gri30.yaml|X=O2:1")
+           + y_H2O*CTPropsSI("SMOLAR","T",T_out,"P",P_out*y_H2O,"gri30.yaml|X=H2O:1")
+           + y_N2 *CTPropsSI("SMOLAR","T",T_out,"P",P_out*y_N2 ,"gri30.yaml|X=N2:1")
+
+  S_dot_gen = n_dot * (s_bar_out - s_bar_in)
+
+  # -------------------------------------------------------------------------
+  # (d) Isentropic efficiency
+  #     Find T_s_out such that s_bar_s_out = s_bar_in
+  # -------------------------------------------------------------------------
+  s_bar_s_out = y_CO2*CTPropsSI("SMOLAR","T",T_s_out,"P",P_out*y_CO2,"gri30.yaml|X=CO2:1")
+             + y_O2 *CTPropsSI("SMOLAR","T",T_s_out,"P",P_out*y_O2 ,"gri30.yaml|X=O2:1")
+             + y_H2O*CTPropsSI("SMOLAR","T",T_s_out,"P",P_out*y_H2O,"gri30.yaml|X=H2O:1")
+             + y_N2 *CTPropsSI("SMOLAR","T",T_s_out,"P",P_out*y_N2 ,"gri30.yaml|X=N2:1")
+
+  s_bar_s_out = s_bar_in
+
+  h_bar_s_out = y_CO2*CTPropsSI("HMOLAR","T",T_s_out,"P",P_ref,"gri30.yaml|X=CO2:1")
+             + y_O2 *CTPropsSI("HMOLAR","T",T_s_out,"P",P_ref,"gri30.yaml|X=O2:1")
+             + y_H2O*CTPropsSI("HMOLAR","T",T_s_out,"P",P_ref,"gri30.yaml|X=H2O:1")
+             + y_N2 *CTPropsSI("HMOLAR","T",T_s_out,"P",P_ref,"gri30.yaml|X=N2:1")
+
+  W_dot_s_t = n_dot * (h_bar_in - h_bar_s_out)
+  eta_t     = W_dot_t / W_dot_s_t
+
+guesses:
+  # Key: T_s_out must be “reasonable” to avoid the low-temperature root.
+  ? T_s_out = 1000.0
+
+  # Helpful guesses for robust convergence
+  ? y_N2 = 0.761
+  ? v_bar_in = 10.77
+  ? n_dot = 0.158
+  ? MW = 28.39
+  ? m_dot = 4.48
+
+  ? h_bar_in = 7820000.0
+  ? h_bar_out = -9770000.0
+  ? W_dot_t = 2771000.0
+  ? W_dot_t_MW = 2.771
+
+  ? s_bar_in = 232200.0
+  ? s_bar_out = 237900.0
+  ? S_dot_gen = 898.0
+
+  ? s_bar_s_out = 232200.0
+  ? h_bar_s_out = -14900000.0
+  ? W_dot_s_t = 3588000.0
+  ? eta_t = 0.773
+
+report:
+  # Inputs
+  y_CO2, y_O2, y_H2O, y_N2
+  T_in, P_in, T_out, P_out, V_dot_in
+
+  # Part (a)
+  v_bar_in, n_dot, MW, m_dot
+
+  # Part (b)
+  h_bar_in, h_bar_out, W_dot_t, W_dot_t_MW
+
+  # Part (c)
+  s_bar_in, s_bar_out, S_dot_gen
+
+  # Part (d)
+  T_s_out, s_bar_s_out, h_bar_s_out, W_dot_s_t, eta_t
+
+solve:
+  backend = scipy
+  method  = hybr
+  tol = 1e-10
+  max_iter = 400
+  max_restarts = 2

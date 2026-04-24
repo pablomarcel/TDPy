@@ -1,0 +1,76 @@
+title: Klein & Nellis Example 12.1-1 (Building Air Conditioning System) — Part (b)
+
+given:
+  # --- Book inputs ---
+  V_dot_1_cfm = 100        # cfm
+  T_1_F       = 95         # °F
+  phi_1       = 0.70       # relative humidity (0..1)
+  P           = 101325     # Pa (1 atm)
+
+  # --- Constants used in book formulas ---
+  eps         = 0.622
+
+  # --- Conversions / constants (keep explicit to avoid unit-parsing surprises) ---
+  cfm_to_m3s  = 0.00047194745      # 1 cfm = 0.00047194745 m^3/s
+  R_univ      = 8.314462618        # J/(mol*K)
+  MW_air      = 0.02896546         # kg/mol  (dry air)
+
+# -----------------------------------------------------------------------------
+# NOTE:
+# - We compute omega_1 using the book's path:
+#     P_sat(T1) -> P_v1 = phi_1*P_sat -> omega_1 = eps*P_v1/(P - P_v1)
+# - We also compute omega_1_HA via HAPropsSI as a cross-check.
+# - This file is self-contained (does not depend on part a output).
+# -----------------------------------------------------------------------------
+
+guess:
+  # Pressures (Pa)
+  P_sat_1    = 5600
+  P_v_1      = 3900
+  P_a_1      = 97400
+
+  # Humidity ratio (kg_v/kg_da)
+  omega_1    = 0.0252
+  omega_1_HA = 0.0252
+
+  # Specific volume (m^3/kg_da) and mass flow rates (kg/s)
+  v_a_1      = 0.91
+  m_dot_a    = 0.0520
+  m_dot_v_1  = 0.00131
+
+equations:
+  # Convert inputs to SI
+  V_dot_1 = V_dot_1_cfm * cfm_to_m3s
+  T_1     = (T_1_F - 32) * (5/9) + 273.15
+
+  # --- Part (a) repeated here (needed for part b) ---
+  P_sat_1 = PropsSI("P","T",T_1,"Q",0,"Water")
+  P_v_1   = phi_1 * P_sat_1
+  omega_1 = eps * P_v_1 / (P - P_v_1)
+
+  # Cross-check using humid-air property call
+  omega_1_HA = HAPropsSI("W","T",T_1,"P",P,"R",phi_1)
+
+  # --- Part (b) mass flow rates ---
+  P_a_1  = P - P_v_1
+  R_a    = R_univ / MW_air
+  v_a_1  = R_a * T_1 / P_a_1
+
+  m_dot_a   = V_dot_1 / v_a_1
+  m_dot_v_1 = omega_1 * m_dot_a
+
+report:
+  # Inputs (after conversion)
+  V_dot_1, T_1, P, phi_1
+
+  # Part (a) intermediates
+  P_sat_1, P_v_1, P_a_1, omega_1, omega_1_HA
+
+  # Part (b) answers
+  v_a_1, m_dot_a, m_dot_v_1
+
+solve:
+  backend = scipy
+  method  = hybr
+  tol     = 1e-9
+  max_iter = 80

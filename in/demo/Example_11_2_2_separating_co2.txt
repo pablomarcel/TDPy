@@ -1,0 +1,90 @@
+title: Klein & Nellis Example 11.2-2 — Separating CO2 from the Atmosphere — Reversible Separator (Ideal Gas Mixture) — TDPy
+
+given:
+  # Ambient
+  T_amb = 20.0 + 273.15              # K
+  P_amb = 101325.0                   # Pa (1 atm)
+
+  # Flow: 50,000 cfm -> m^3/s
+  cfm_to_m3ps = 0.00047194745
+  V_dot1 = 50000.0 * cfm_to_m3ps     # m^3/s
+
+  # Inlet composition (state 1)
+  y_N2_1  = 0.7808
+  y_CO2_1 = 0.00038
+
+  # Gas constant (EES R# on kmol basis)
+  R_u = 8314.462618                  # J/(kmol*K)
+
+  # Engine / fuel (part b)
+  HC_C8H18  = 44400000.0             # J/kg  (44.4 MJ/kg)
+  MW_C8H18  = 114.2                  # kg/kmol
+  eta_engine = 0.35
+
+equations:
+  # ---------------- State 1 ----------------
+  T1 = T_amb + 0.0*Q_dot
+  P1 = P_amb + 0.0*Q_dot
+  y_O2_1 = 1.0 - y_N2_1 - y_CO2_1 + 0.0*Q_dot
+
+  n_dot_N2  = V_dot1 * y_N2_1  * P1 / (R_u * T1) + 0.0*Q_dot
+  n_dot_O2  = V_dot1 * y_O2_1  * P1 / (R_u * T1) + 0.0*Q_dot
+  n_dot_CO2 = V_dot1 * y_CO2_1 * P1 / (R_u * T1) + 0.0*Q_dot
+
+  # ---------------- State 2 (clean air: CO2 removed) ----------------
+  T2 = T_amb + 0.0*Q_dot
+  P2 = P_amb + 0.0*Q_dot
+  y_N2_2 = n_dot_N2 / (n_dot_N2 + n_dot_O2) + 0.0*Q_dot
+  y_O2_2 = 1.0 - y_N2_2 + 0.0*Q_dot
+
+  # ---------------- State 3 (pure CO2) ----------------
+  T3 = T_amb + 0.0*Q_dot
+  P3 = P_amb + 0.0*Q_dot
+
+  # ---------------- Reversible separator: entropy balance (explicit Q_dot form) ----------------
+  Q_dot = T_amb * R_u * ( n_dot_O2*ln(y_O2_2/y_O2_1) + n_dot_N2*ln(y_N2_2/y_N2_1) + n_dot_CO2*ln(1.0/y_CO2_1) )
+
+  # Energy balance (ideal gas, isothermal): W_dot = Q_dot
+  W_dot = Q_dot
+
+  # Work per kmol of CO2 captured
+  W_separator_per_kmol_CO2 = W_dot / n_dot_CO2
+
+  # Engine work per kmol of CO2 emitted (C8H18 -> 8 CO2); keep as UNKNOWN so it shows in result.variables
+  W_engine_per_kmol_CO2 = (HC_C8H18 * MW_C8H18 * eta_engine / 8.0) + 0.0*Q_dot
+
+  fraction_separator = W_separator_per_kmol_CO2 / W_engine_per_kmol_CO2
+
+guesses:
+  ? Q_dot = 8064.0
+  ? W_dot = 8064.0
+
+  ? T1 = 293.15
+  ? P1 = 101325.0
+  ? y_O2_1 = 0.21882
+
+  ? n_dot_N2 = 0.766
+  ? n_dot_O2 = 0.215
+  ? n_dot_CO2 = 0.000373
+
+  ? y_N2_2 = 0.7811
+  ? y_O2_2 = 0.2189
+
+  ? W_separator_per_kmol_CO2 = 21630000.0
+  ? W_engine_per_kmol_CO2 = 221833500.0
+  ? fraction_separator = 0.0975
+
+report:
+  T_amb, P_amb, V_dot1
+  y_N2_1, y_CO2_1, y_O2_1
+  n_dot_N2, n_dot_O2, n_dot_CO2
+  y_N2_2, y_O2_2
+  Q_dot, W_dot
+  W_separator_per_kmol_CO2, W_engine_per_kmol_CO2, fraction_separator
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 300
+  max_restarts = 2

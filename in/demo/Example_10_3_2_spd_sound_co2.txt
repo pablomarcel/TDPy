@@ -1,0 +1,96 @@
+title: Klein & Nellis Example 10.3-2 — Speed of Sound of CO2 — RKS EOS + CoolProp comparison — TDPy
+
+given:
+  # --- universal gas constant (molar) ---
+  R_u = 8314.462618                  # J/(kmol*K)
+
+  # --- state ---
+  T = 350.0                          # K
+  P_kPa = 100.0                      # kPa
+  P = P_kPa*1000.0                   # Pa
+
+  # --- CO2 constants (mass-basis setup) ---
+  MW = 44.0095                       # kg/kmol  (CarbonDioxide)
+  R = R_u / MW                       # J/(kg*K)
+
+  # critical properties + acentric factor (CO2)
+  T_crit = 304.1282                  # K
+  P_crit = 7377300.0                 # Pa
+  omega = 0.22394                    # -
+
+  # --- RKS parameters (unrolled from EES subprogram) ---
+  T_r = T / T_crit
+  m = 0.480 + 1.574*omega - 0.176*(omega**2)
+  alpha_sqrt = 1.0 + m*(1.0 - sqrt(T_r))
+  alpha = alpha_sqrt**2
+
+  a = 0.42747*alpha*(R**2)*(T_crit**2)/P_crit
+  b = 0.08664*R*T_crit/P_crit
+
+  # ideal-gas specific volume (good initial guess for v)
+  v_ideal = R*T/P                    # m^3/kg
+
+equations:
+  # --- RKS EOS: solve for specific volume v (m^3/kg) ---
+  P = R*T/(v - b) - a/(v*(v + b))
+
+  # --- specific heats from CoolProp (mass basis) ---
+  c_P = PropsSI("Cpmass","T",T,"P",P,"CarbonDioxide")
+  c_v = PropsSI("Cvmass","T",T,"P",P,"CarbonDioxide")
+
+  # --- derivative dP/dv at constant T from RKS EOS (analytic) ---
+  dPdv_T = (-R*T/((v - b)**2)) + (a/(v**2*(v + b))) + (a/(v*((v + b)**2)))
+
+  # --- speed of sound from RKS EOS (book expression) ---
+  ss = sqrt(- (v**2) * c_P * dPdv_T / c_v)
+
+  # --- CoolProp reference values (EES analogs) ---
+  v_EES = 1.0/PropsSI("D","T",T,"P",P,"CarbonDioxide")
+  ss_EES = PropsSI("A","T",T,"P",P,"CarbonDioxide")
+
+  # --- comparisons ---
+  dv = v - v_EES
+  dss = ss - ss_EES
+
+guesses:
+  # primary nonlinear unknown
+  ? v = v_ideal
+
+  # heats (order-of-magnitude guesses; warm-start overwrites)
+  ? c_P = 900.0
+  ? c_v = 650.0
+
+  # derivative + speeds (rough)
+  ? dPdv_T = -1.0e7
+  ? ss = 300.0
+  ? ss_EES = 300.0
+
+  # CoolProp v (warm-start overwrites)
+  ? v_EES = v_ideal
+
+  # deltas
+  ? dv = 0.0
+  ? dss = 0.0
+
+report:
+  # inputs
+  T, P_kPa, P
+
+  # constants (sanity)
+  MW, R
+  T_crit, P_crit, omega
+  a, b
+  v_ideal
+
+  # solution + checks
+  v, v_EES, dv
+  c_P, c_v
+  dPdv_T
+  ss, ss_EES, dss
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-11
+  max_iter = 400
+  max_restarts = 2

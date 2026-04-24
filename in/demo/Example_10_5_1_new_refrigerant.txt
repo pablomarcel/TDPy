@@ -1,0 +1,100 @@
+title: Klein & Nellis Example 10.5-1 — Evaluating a New Refrigerant (fit + Clapeyron) — TDPy (forced-equations)
+
+given:
+  # --- universal gas constant (kmol basis) ---
+  R_u = 8314.462618                  # J/(kmol*K)
+
+  # --- "new refrigerant" constants (from book) ---
+  MW = 117.0                         # kg/kmol
+  P_crit = 4250.0e3                  # Pa   (4250 kPa)
+  T_crit = 477.0                     # K
+
+  c_f = 1050.0                       # J/(kg*K)  liquid cp (assumed constant)
+  v_f = 0.00077                      # m^3/kg    liquid specific volume (assumed constant)
+
+  # vapor-pressure fit constants (P in Pa, T in K)
+  a1 = 4.0003e10                     # Pa
+  a2 = -4206.35                      # K
+  a3 = -0.00060                      # 1/K
+  a4 = 4.9789                        # -
+
+  # condenser / evaporator temperatures
+  T_cond = 35.0 + 273.15             # K
+  T_evap = -10.0 + 273.15            # K
+
+  # state temperatures used in the EES listing
+  T4 = T_cond                        # K (state 4, condenser saturation)
+  T1 = T_evap                        # K (state 1, evaporator saturation)
+
+  # specific gas constant (mass basis)
+  R = R_u / MW                       # J/(kg*K)
+
+equations:
+  # Dummy unknown to prevent interpreter from folding everything into constants
+  hold = 0.0
+
+  # --- saturation pressures from the fit (keep as equations via +0.0*hold) ---
+  P4 = a1*exp(a2/T4 + a3*T4 + a4*(1.0 - T4/T_crit)**1.5) + 0.0*hold
+  P1 = a1*exp(a2/T1 + a3*T1 + a4*(1.0 - T1/T_crit)**1.5) + 0.0*hold
+
+  # --- ideal-gas estimate for saturated vapor specific volume at state 1 ---
+  v_g1 = R*T1/P1 + 0.0*hold
+
+  # --- derivative of ln(P_sat) w.r.t. T at state 1 (from the fit) ---
+  dlnPsat_dT_1 = (-a2/(T1**2)) + a3 - (1.5*a4/T_crit)*sqrt(1.0 - T1/T_crit) + 0.0*hold
+
+  # convert to dP_sat/dT at state 1
+  dPsat_dT_1 = P1 * dlnPsat_dT_1 + 0.0*hold
+
+  # --- Clapeyron equation (solve for latent heat at state 1) ---
+  # (matches EES form: dPsatdT = Dh_fg / (T*(v_g - v_f)))
+  dPsat_dT_1 = Dh_fg_1/(T1*(v_g1 - v_f)) + 0.0*hold
+
+  # --- evaporator heat transfer per unit mass flow (J/kg) ---
+  q_evap_per_kg = Dh_fg_1 - c_f*(T4 - T1) - v_f*(P4 - P1) + 0.0*hold
+
+  # convenience conversions
+  P1_kPa = P1/1000.0 + 0.0*hold
+  P4_kPa = P4/1000.0 + 0.0*hold
+  q_evap_kJ_per_kg = q_evap_per_kg/1000.0 + 0.0*hold
+  Dh_fg_kJ_per_kg = Dh_fg_1/1000.0 + 0.0*hold
+
+guesses:
+  ? hold = 0.0
+
+  # saturation pressures (Pa)
+  ? P1 = 2.0e4
+  ? P4 = 1.0e5
+
+  # vapor specific volume (m^3/kg)
+  ? v_g1 = 1.0
+
+  # derivatives
+  ? dlnPsat_dT_1 = 0.05
+  ? dPsat_dT_1 = 1000.0
+
+  # latent heat + evap load
+  ? Dh_fg_1 = 2.5e5
+  ? q_evap_per_kg = 2.0e5
+
+  # convenience
+  ? P1_kPa = 20.0
+  ? P4_kPa = 100.0
+  ? q_evap_kJ_per_kg = 200.0
+  ? Dh_fg_kJ_per_kg = 250.0
+
+report:
+  MW, P_crit, T_crit
+  T1, T4
+  P1_kPa, P4_kPa
+  v_g1
+  dlnPsat_dT_1, dPsat_dT_1
+  Dh_fg_kJ_per_kg
+  q_evap_kJ_per_kg
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-12
+  max_iter = 200
+  max_restarts = 2

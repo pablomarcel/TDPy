@@ -1,0 +1,94 @@
+title: Klein & Nellis Example 12.4-1 (Heating + Humidification) — Part (a)
+
+given:
+  P = 101325
+  T_out_C = -5
+  phi_out = 0.5
+
+  T_sc_out_C = 15
+  f = 0.2
+
+  phi_h_out = 0.95
+  T_stm_C = 135
+
+# -----------------------------------------------------------------------------
+# IMPORTANT:
+# Your solver uses HAPropsSI / PropsSI (CoolProp). If guesses are garbage (e.g. T=1 K),
+# HAPropsSI will throw and the SciPy backend will apply penalty residuals and stall.
+# These guesses are intentionally conservative and physically sane.
+# -----------------------------------------------------------------------------
+
+guess:
+  # Temperatures (K)
+  # State 3 should be in a normal ambient-ish range (heated & humidified air stream).
+  T3 = 296.15
+  T4 = 293.15
+
+  # Humidity ratios (kg/kg dry air)
+  # Typical HVAC values are ~0.001–0.030 depending on conditions.
+  W1 = 0.0013
+  W2 = 0.0013
+  W3 = 0.0200
+  W4 = 0.0050
+
+  # Moist-air enthalpies (J/kg dry air)
+  # Typical scale: ~0 to 100 kJ/kg_da for comfort air ranges.
+  h1 = -2000
+  h2 = 18000
+  h3 = 60000
+  h4 = 26000
+
+  # Relative humidities (0..1)
+  phi2 = 0.12
+  phi4 = 0.30
+
+  # Steam enthalpy terms (J/kg water)
+  # href0 here is liquid water enthalpy at 0 C (depends on reference); can be small.
+  # hstm is "steam enthalpy above href0" at Tstm, order ~2.5e6–2.8e6 J/kg.
+  href0 = 0
+  hstm = 2.7e6
+
+equations:
+  T1 = T_out_C + 273.15
+  T2 = T_sc_out_C + 273.15
+  Tstm = T_stm_C + 273.15
+
+  # --- State 1 ---
+  W1 = HAPropsSI("W","T",T1,"P",P,"R",phi_out)
+  h1 = HAPropsSI("H","T",T1,"P",P,"R",phi_out)
+
+  # --- State 2 (heating, no moisture added) ---
+  W2 = 1.0*W1
+  h2 = HAPropsSI("H","T",T2,"P",P,"W",W2)
+  phi2 = HAPropsSI("R","T",T2,"P",P,"W",W2)
+
+  # --- Steam enthalpy (consistent reference) ---
+  href0 = PropsSI("H","T",273.15,"Q",0,"Water")
+  hstm  = PropsSI("H","T",Tstm,"Q",1,"Water") - href0
+
+  # --- State 3: RH fixed, T3 unknown ---
+  W3 = HAPropsSI("W","T",T3,"P",P,"R",phi_h_out)
+  h3 = HAPropsSI("H","T",T3,"P",P,"W",W3)
+
+  # Energy balance (book Eq. 4)
+  h2 + (W3 - W2)*hstm = h3
+
+  # --- Mix to state 4 ---
+  W4 = (1-f)*W2 + f*W3
+  h4 = (1-f)*h2 + f*h3
+
+  T4 = HAPropsSI("T","P",P,"W",W4,"H",h4)
+  phi4 = HAPropsSI("R","T",T4,"P",P,"W",W4)
+
+report:
+  T3, W3, h3
+  W4, h4, T4, phi4
+  W1, h1
+  W2, h2, phi2
+  hstm
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-7
+  max_iter = 80

@@ -1,0 +1,156 @@
+title: Klein & Nellis Example 11.5-1 — Mixture Refrigeration Cycle (Propane / n-Butane) — Raoult (unrolled) — TDPy
+
+given:
+  # ---------------- inputs ----------------
+  P_cond = 700000.0                 # Pa  (700 kPa)
+  P_evap = 100000.0                 # Pa  (100 kPa)
+
+  z_p = 0.25                        # overall mole fraction propane
+  z_b = 0.75                        # overall mole fraction n-butane
+
+  # State pressures (fixed)
+  P1 = P_cond
+  P2 = P_evap
+  P3 = P_evap
+
+  # Quality (given at states 1 and 3)
+  Q1 = 0.0
+  Q3 = 1.0
+
+  # Liquid composition at state 1 (all liquid)
+  x_p1 = z_p
+  x_b1 = z_b
+
+  # Vapor composition at state 3 (all vapor)
+  y_p3 = z_p
+  y_b3 = z_b
+
+  # Unit helper: CoolProp HMOLAR returns J/mol; convert to J/kmol
+  mol_to_kmol = 1000.0
+
+equations:
+  # ---------------- state 1 (condenser outlet): saturated liquid mixture @ P1 ----------------
+  P_sat_p1 = PropsSI("P","T",T1,"Q",0,"Propane")
+  P_sat_b1 = PropsSI("P","T",T1,"Q",0,"n-Butane")
+
+  y_p1*P1 = x_p1*P_sat_p1
+  y_b1*P1 = x_b1*P_sat_b1
+  y_p1 + y_b1 = 1.0
+
+  h_p_f1 = mol_to_kmol*PropsSI("HMOLAR","T",T1,"Q",0,"Propane")
+  h_b_f1 = mol_to_kmol*PropsSI("HMOLAR","T",T1,"Q",0,"n-Butane")
+  h1 = x_p1*h_p_f1 + x_b1*h_b_f1
+
+  # ---------------- state 2 (evaporator inlet): throttle to P2, two-phase mixture ----------------
+  P_sat_p2 = PropsSI("P","T",T2,"Q",0,"Propane")
+  P_sat_b2 = PropsSI("P","T",T2,"Q",0,"n-Butane")
+
+  y_p2*P2 = x_p2*P_sat_p2
+  y_b2*P2 = x_b2*P_sat_b2
+  y_p2 + y_b2 = 1.0
+  x_p2 + x_b2 = 1.0
+
+  z_p = x_p2*(1.0-Q2) + y_p2*Q2
+
+  h_p_f2 = mol_to_kmol*PropsSI("HMOLAR","T",T2,"Q",0,"Propane")
+  h_b_f2 = mol_to_kmol*PropsSI("HMOLAR","T",T2,"Q",0,"n-Butane")
+  h_p_g2 = mol_to_kmol*PropsSI("HMOLAR","T",T2,"Q",1,"Propane")
+  h_b_g2 = mol_to_kmol*PropsSI("HMOLAR","T",T2,"Q",1,"n-Butane")
+
+  h_f2 = x_p2*h_p_f2 + x_b2*h_b_f2
+  h_g2 = y_p2*h_p_g2 + y_b2*h_b_g2
+  h2 = h_f2 + Q2*(h_g2 - h_f2)
+
+  # throttle valve: h2 = h1
+  h2 = h1
+
+  # ---------------- state 3 (evaporator outlet): saturated vapor mixture @ P3 ----------------
+  P_sat_p3 = PropsSI("P","T",T3,"Q",0,"Propane")
+  P_sat_b3 = PropsSI("P","T",T3,"Q",0,"n-Butane")
+
+  y_p3*P3 = x_p3*P_sat_p3
+  y_b3*P3 = x_b3*P_sat_b3
+  x_p3 + x_b3 = 1.0
+
+  h_p_g3 = mol_to_kmol*PropsSI("HMOLAR","T",T3,"Q",1,"Propane")
+  h_b_g3 = mol_to_kmol*PropsSI("HMOLAR","T",T3,"Q",1,"n-Butane")
+  h3 = y_p3*h_p_g3 + y_b3*h_b_g3
+
+  # refrigeration per unit mole (J/kmol)
+  q_evap_per_kmol = h3 - h2
+  q_evap_MJ_per_kmol = q_evap_per_kmol/1000000.0
+
+  # temperature helpers
+  T1_C = T1 - 273.15
+  T2_C = T2 - 273.15
+  T3_C = T3 - 273.15
+
+guesses:
+  # -------- main unknowns --------
+  ? T1 = 317.6
+  ? y_p1 = 0.40
+  ? y_b1 = 0.60
+
+  ? T2 = 261.3
+  ? Q2 = 0.37
+  ? x_p2 = 0.14
+  ? x_b2 = 0.86
+  ? y_p2 = 0.44
+  ? y_b2 = 0.56
+
+  ? T3 = 266.6
+  ? x_p3 = 0.08
+  ? x_b3 = 0.92
+
+  # -------- derived unknowns (warm-start will overwrite) --------
+  ? P_sat_p1 = 1000000.0
+  ? P_sat_b1 = 400000.0
+  ? h_p_f1 = 0.0
+  ? h_b_f1 = 0.0
+  ? h1 = 0.0
+
+  ? P_sat_p2 = 650000.0
+  ? P_sat_b2 = 130000.0
+  ? h_p_f2 = 0.0
+  ? h_b_f2 = 0.0
+  ? h_p_g2 = 0.0
+  ? h_b_g2 = 0.0
+  ? h_f2 = 0.0
+  ? h_g2 = 0.0
+  ? h2 = 0.0
+
+  ? P_sat_p3 = 620000.0
+  ? P_sat_b3 = 160000.0
+  ? h_p_g3 = 0.0
+  ? h_b_g3 = 0.0
+  ? h3 = 0.0
+
+  ? q_evap_per_kmol = 14000000.0
+  ? q_evap_MJ_per_kmol = 14.0
+
+  ? T1_C = 44.0
+  ? T2_C = -12.0
+  ? T3_C = -6.0
+
+report:
+  # inputs
+  P_cond, P_evap, z_p, z_b
+
+  # state 1 (bubble point)
+  T1, T1_C, P_sat_p1, P_sat_b1, y_p1, y_b1, h1
+
+  # state 2 (after throttle)
+  T2, T2_C, Q2, x_p2, x_b2, y_p2, y_b2, h2
+
+  # state 3 (dew point)
+  T3, T3_C, x_p3, x_b3, h3
+
+  # refrigeration per mole
+  q_evap_per_kmol, q_evap_MJ_per_kmol
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 800
+  max_restarts = 2

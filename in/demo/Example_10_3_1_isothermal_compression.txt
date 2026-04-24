@@ -1,0 +1,153 @@
+title: Klein & Nellis Example 10.3-1 — Isothermal Compression (RKS EOS) — Ammonia — analytic integrals — TDPy
+
+given:
+  # --- universal ---
+  R_u = 8314.462618                 # J/(kmol*K)
+
+  # --- fluid name for CoolProp ---
+  fluid = Ammonia
+
+  # --- process inputs ---
+  Vol_ini  = 0.013                  # m^3
+  Vol_final = 0.005                 # m^3
+  T = 293.15                        # K  (20 C)
+  P_ini = 224000.0                  # Pa (224 kPa)
+
+  # --- ammonia properties (unrolled) ---
+  MW = 17.03052                     # kg/kmol
+  T_crit = 405.40                   # K
+  P_crit = 11330000.0               # Pa
+  omega = 0.256                     # [-]
+
+  # --- gas constant on mass basis ---
+  R = R_u / MW                      # J/(kg*K)
+
+  # --- RKS parameters (Soave form) ---
+  b = 0.08664*R*T_crit/P_crit
+  m_rks = 0.480 + 1.574*omega - 0.176*omega**2
+  T_r = T/T_crit
+  alpha = (1.0 + m_rks*(1.0 - sqrt(T_r)))**2
+  a = 0.42747*alpha*(R**2)*(T_crit**2)/P_crit
+  dalpha_dT = -m_rks*sqrt(alpha/T_r)/T_crit
+  da_dT = 0.42747*(R**2)*(T_crit**2)*dalpha_dT/P_crit
+
+  # --- handy ratios ---
+  rV = Vol_final/Vol_ini
+
+  # --- ideal-gas quick check (all constants here) ---
+  v_ini_IG = R*T/P_ini
+  m_IG = Vol_ini/v_ini_IG
+  v_final_IG = Vol_final/m_IG
+  Deltau_IG = 0.0
+  Deltas_IG = R*ln(v_final_IG/v_ini_IG)
+  Q_out_IG = -T*m_IG*Deltas_IG
+  W_in_IG = m_IG*Deltau_IG + Q_out_IG
+  Q_out_IG_kJ = Q_out_IG/1000.0
+  W_in_IG_kJ = W_in_IG/1000.0
+
+equations:
+  # --- RKS solve for initial specific volume (use scaled EOS residual) ---
+  1.0 = ( R*T/(v_ini - b) - a/(v_ini*(v_ini + b)) )/P_ini
+
+  # --- dependent state from geometry ---
+  m = Vol_ini/v_ini
+  v_final = rV*v_ini
+
+  # --- final pressure from RKS EOS ---
+  P_final = R*T/(v_final - b) - a/(v_final*(v_final + b))
+
+  # --- analytic integrals (isothermal): Deltas = ∫(∂P/∂T)_v dv; Deltau = ∫(∂u/∂v)_T dv
+  ln_ratio_v = ln(v_final/(v_final + b)) - ln(v_ini/(v_ini + b))
+  ln_ratio_vmb = ln(v_final - b) - ln(v_ini - b)
+
+  Deltas = R*ln_ratio_vmb - (da_dT/b)*ln_ratio_v
+  Deltau = ((a - T*da_dT)/b)*ln_ratio_v
+
+  # --- balances ---
+  Q_out = -T*m*Deltas
+  W_in = m*Deltau + Q_out
+
+  Q_out_kJ = Q_out/1000.0
+  W_in_kJ = W_in/1000.0
+
+  # --- CoolProp (EES analog) reference, mass-basis ---
+  v_ini_EES = 1.0/PropsSI("D","T",T,"P",P_ini,fluid)
+  u_ini_EES = PropsSI("UMASS","T",T,"P",P_ini,fluid)
+  s_ini_EES = PropsSI("SMASS","T",T,"P",P_ini,fluid)
+
+  m_EES = Vol_ini/v_ini_EES
+  v_final_EES = Vol_final/m_EES
+  rho_final_EES = 1.0/v_final_EES
+
+  u_final_EES = PropsSI("UMASS","T",T,"D",rho_final_EES,fluid)
+  s_final_EES = PropsSI("SMASS","T",T,"D",rho_final_EES,fluid)
+
+  Deltau_EES = u_final_EES - u_ini_EES
+  Deltas_EES = s_final_EES - s_ini_EES
+
+  Q_out_EES = -T*m_EES*Deltas_EES
+  W_in_EES = m_EES*Deltau_EES + Q_out_EES
+
+  Q_out_EES_kJ = Q_out_EES/1000.0
+  W_in_EES_kJ = W_in_EES/1000.0
+
+guesses:
+  # main solve (good gas-like initial guess)
+  ? v_ini = v_ini_IG
+
+  # downstream guesses (warm-start will overwrite)
+  ? m = 0.02
+  ? v_final = 0.25
+  ? P_final = 600000.0
+
+  ? ln_ratio_v = -0.1
+  ? ln_ratio_vmb = -0.6
+
+  ? Deltas = -500.0
+  ? Deltau = -10000.0
+
+  ? Q_out = 3000.0
+  ? W_in = 2800.0
+  ? Q_out_kJ = 3.0
+  ? W_in_kJ = 3.0
+
+  # CoolProp reference guesses
+  ? v_ini_EES = v_ini_IG
+  ? u_ini_EES = 0.0
+  ? s_ini_EES = 0.0
+  ? m_EES = 0.02
+  ? v_final_EES = 0.25
+  ? rho_final_EES = 4.0
+  ? u_final_EES = 0.0
+  ? s_final_EES = 0.0
+  ? Deltau_EES = 0.0
+  ? Deltas_EES = 0.0
+  ? Q_out_EES = 3000.0
+  ? W_in_EES = 2800.0
+  ? Q_out_EES_kJ = 3.0
+  ? W_in_EES_kJ = 3.0
+
+report:
+  fluid
+  Vol_ini, Vol_final
+  T, P_ini
+  MW, R
+  T_crit, P_crit, omega
+  a, b, da_dT
+  v_ini_IG, v_final_IG
+  Q_out_IG_kJ, W_in_IG_kJ
+
+  v_ini, m, v_final, P_final
+  Deltas, Deltau
+  Q_out_kJ, W_in_kJ
+
+  v_ini_EES, m_EES, v_final_EES
+  Deltas_EES, Deltau_EES
+  Q_out_EES_kJ, W_in_EES_kJ
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 800
+  max_restarts = 2

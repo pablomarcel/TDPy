@@ -1,0 +1,132 @@
+title: Klein & Nellis Example 12.2-1 — Building air-conditioning system (psychrometrics) — TDPy
+
+given:
+  # --- constants ---
+  R_u = 8314.462618                  # J/(kmol*K)
+  atm_to_Pa = 101325.0               # Pa/atm
+  MW_air = 28.96546                  # kg/kmol (dry air)
+  R_a = R_u/MW_air                   # J/(kg*K)
+  cfm_to_m3ps = 0.00047194745        # (m^3/s)/cfm
+  m3ps_to_gph = 264.172052*3600.0    # (gal/hr)/(m^3/s)  (US gal)
+
+  # --- inputs (unrolled unit conversions) ---
+  V_dot_1 = 100.0*cfm_to_m3ps        # m^3/s (100 cfm)
+
+  T_1 = (95.0 - 32.0)*5.0/9.0 + 273.15   # K (95 F)
+  T_2 = (45.0 - 32.0)*5.0/9.0 + 273.15   # K (45 F)
+  T_3 = (65.0 - 32.0)*5.0/9.0 + 273.15   # K (65 F)
+
+  P = 1.0*atm_to_Pa                  # Pa (1 atm)
+  phi_1 = 0.7                        # -
+
+equations:
+  # ---------------- State 1 (entering chilled water coil) ----------------
+  P_sat_1 = PropsSI("P","T",T_1,"Q",0,"Water")
+  P_v_1 = phi_1*P_sat_1
+  omega_1 = 0.622*P_v_1/(P - P_v_1)
+
+  P_a_1 = P - P_v_1
+  v_a_1 = R_a*T_1/P_a_1
+  m_dot_a = V_dot_1/v_a_1
+  m_dot_v_1 = m_dot_a*omega_1
+
+  T_dp = PropsSI("T","P",P_v_1,"Q",0,"Water")
+  T_dp_F = (T_dp - 273.15)*9.0/5.0 + 32.0
+
+  # ---------------- State 2 (leaving chilled water coil; saturated at T2) ----------------
+  P_v_2 = PropsSI("P","T",T_2,"Q",0,"Water")
+  omega_2 = 0.622*P_v_2/(P - P_v_2)
+  m_dot_v_2 = m_dot_a*omega_2
+
+  m_dot_c = m_dot_v_1 - m_dot_v_2
+  v_c = 1.0/PropsSI("D","T",T_2,"P",P,"Water")
+  V_dot_c = m_dot_c*v_c
+  V_dot_c_gph = V_dot_c*m3ps_to_gph
+
+  # ---------------- State 3 (leaving steam coil; no moisture added) ----------------
+  P_v_3 = P_v_2
+  P_sat_3 = PropsSI("P","T",T_3,"Q",0,"Water")
+  phi_3 = P_v_3/P_sat_3
+
+  # ---------------- Enthalpies + energy balances (CoolProp PropsSI) ----------------
+  h_a_1 = PropsSI("H","T",T_1,"P",P_a_1,"Air")
+  h_v_1 = PropsSI("H","T",T_1,"P",P_v_1,"Water")
+
+  h_c = PropsSI("H","T",T_2,"P",P,"Water")
+
+  h_a_2 = PropsSI("H","T",T_2,"P",(P - P_v_2),"Air")
+  h_v_2 = PropsSI("H","T",T_2,"Q",1,"Water")
+
+  m_dot_a*h_a_1 + m_dot_v_1*h_v_1 = Q_dot_cwc + m_dot_c*h_c + m_dot_a*h_a_2 + m_dot_v_2*h_v_2
+
+  h_a_3 = PropsSI("H","T",T_3,"P",(P - P_v_3),"Air")
+  h_v_3 = PropsSI("H","T",T_3,"P",P_v_3,"Water")
+
+  m_dot_a*h_a_2 + m_dot_v_2*h_v_2 + Q_dot_stm = m_dot_a*h_a_3 + m_dot_v_2*h_v_3
+
+guesses:
+  # state 1
+  ? P_sat_1 = 5600.0
+  ? P_v_1 = 3900.0
+  ? omega_1 = 0.025
+  ? P_a_1 = 9.7e4
+  ? v_a_1 = 0.91
+  ? m_dot_a = 0.052
+  ? m_dot_v_1 = 0.0013
+  ? T_dp = 301.0
+  ? T_dp_F = 82.0
+
+  # state 2
+  ? P_v_2 = 1000.0
+  ? omega_2 = 0.0062
+  ? m_dot_v_2 = 0.00032
+  ? m_dot_c = 0.0010
+  ? v_c = 0.0010
+  ? V_dot_c = 1.0e-6
+  ? V_dot_c_gph = 1.0
+
+  # state 3
+  ? P_v_3 = 1000.0
+  ? P_sat_3 = 2100.0
+  ? phi_3 = 0.48
+
+  # enthalpies (rough)
+  ? h_a_1 = 3.1e5
+  ? h_a_2 = 2.8e5
+  ? h_a_3 = 2.9e5
+  ? h_v_1 = 2.56e6
+  ? h_v_2 = 2.51e6
+  ? h_v_3 = 2.53e6
+  ? h_c = 3.0e4
+
+  # heat rates (sign convention: Q_dot_cwc expected negative)
+  ? Q_dot_cwc = -4000.0
+  ? Q_dot_stm = 600.0
+
+report:
+  # inputs
+  V_dot_1, P, phi_1
+  T_1, T_2, T_3
+
+  # state 1
+  P_sat_1, P_v_1, omega_1
+  m_dot_a, m_dot_v_1
+  T_dp, T_dp_F
+
+  # state 2
+  P_v_2, omega_2
+  m_dot_v_2, m_dot_c
+  V_dot_c_gph
+
+  # state 3
+  P_sat_3, phi_3
+
+  # energy
+  Q_dot_cwc, Q_dot_stm
+
+solve:
+  backend = auto
+  method = hybr
+  tol = 1e-10
+  max_iter = 600
+  max_restarts = 2

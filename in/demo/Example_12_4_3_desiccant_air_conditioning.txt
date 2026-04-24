@@ -1,0 +1,235 @@
+title: Klein & Nellis Example 12.4-3 (Desiccant Air-Conditioning System) — Robust bounded-RH formulation (Humid Air)
+
+given:
+  # -------------------- Given (book) --------------------
+  P = 101325.0               # Pa
+
+  # Outdoor air (state 1)
+  T_out_C  = 34.0            # °C
+  phi_out  = 0.50            # [-]
+
+  # Air leaving desiccant wheel (state 2)
+  T2_C     = 63.0            # °C
+
+  # Rotary regenerator effectiveness (pinch at cold end)
+  eff_rr   = 0.70            # [-]
+
+  # Evaporative coolers effectiveness (both coolers)
+  eff_ec   = 0.80            # [-]
+
+  # Building / indoor condition (state 5 temperature)
+  T_in_C   = 25.0            # °C
+  SHR      = 0.75            # [-]
+
+  # Regeneration heater outlet (state 8 temperature)
+  T8_C     = 70.0            # °C
+
+  # -------------------- Constants --------------------
+  C_to_K = 273.15
+  eps_phi = 1e-6             # keep RH strictly inside (0,1)
+
+guess:
+  # --- bounded RH latent variables (z ~ logit(phi)) ---
+  # phi = eps + (1-2eps)/(1+exp(-z))
+  z_phi2 = -4.0      # ~0.018  (very dry at 63C is expected)
+  z_phi4 =  2.2      # ~0.900
+  z_phi5 =  0.0      # ~0.500
+  z_phi6 =  2.9      # ~0.948
+
+  # --- key unknown temperatures (K) ---
+  T3 = 311.15        # 38 C
+  T4 = 296.15        # 23 C (supply should be < 25C)
+  T6 = 292.15        # 19 C
+  T7 = 320.15        # 47 C
+  T9 = 313.15        # 40 C
+
+  # --- psych state ballparks ---
+  omega1 = 0.017
+  h_av1  = 7.7e4
+  T_wb1  = 298.45
+
+  omega2 = 0.007
+  h_av2  = 8.5e4
+
+  omega4 = 0.012
+  h_av4  = 5.5e4
+
+  omega5 = 0.010
+  h_av5  = 5.0e4
+  T_wb5  = 290.15
+
+  omega6 = 0.012
+  h_av6  = 5.2e4
+
+  h_av3  = 7.0e4
+  h_av3_min = 6.0e4
+  eff_rr_calc = 0.70
+
+  h_av7  = 7.5e4
+  omega7 = 0.012
+
+  h_av8  = 9.0e4
+  omega8 = 0.012
+
+  h_av9  = 8.0e4
+  omega9 = 0.015
+
+  COP = 0.35
+
+equations:
+  # -------------------- Fixed temperatures --------------------
+  T1 = T_out_C + C_to_K
+  T2 = T2_C    + C_to_K
+  T5 = T_in_C  + C_to_K
+  T8 = T8_C    + C_to_K
+
+  # -------------------- RH bounded parameterizations --------------------
+  phi2 = eps_phi + (1 - 2*eps_phi) / (1 + exp(-z_phi2))
+  phi4 = eps_phi + (1 - 2*eps_phi) / (1 + exp(-z_phi4))
+  phi5 = eps_phi + (1 - 2*eps_phi) / (1 + exp(-z_phi5))
+  phi6 = eps_phi + (1 - 2*eps_phi) / (1 + exp(-z_phi6))
+
+  # -------------------- State 1 (outdoor air) --------------------
+  omega1 = HAPropsSI("W"  , "T", T1, "P", P, "R", phi_out)
+  h_av1  = HAPropsSI("H"  , "T", T1, "P", P, "R", phi_out)
+  T_wb1  = HAPropsSI("Twb", "T", T1, "P", P, "R", phi_out)
+
+  # -------------------- State 2 (after desiccant wheel) --------------------
+  # Constant thermodynamic wet-bulb: Twb2 = Twb1 at fixed T2 -> solves phi2
+  T_wb1  = HAPropsSI("Twb", "T", T2, "P", P, "R", phi2)
+  omega2 = HAPropsSI("W"  , "T", T2, "P", P, "R", phi2)
+  h_av2  = HAPropsSI("H"  , "T", T2, "P", P, "R", phi2)
+
+  # -------------------- State 3 (after rotary regenerator, supply side) --------------------
+  omega3 = omega2
+  h_av3  = HAPropsSI("H"  , "T", T3, "P", P, "W", omega3)
+  phi3   = HAPropsSI("R"  , "T", T3, "P", P, "W", omega3)
+  T_wb3  = HAPropsSI("Twb", "T", T3, "P", P, "W", omega3)
+
+  # Regenerator effectiveness, pinch at cold end: T3_min = T6
+  h_av3_min   = HAPropsSI("H", "T", T6, "P", P, "W", omega3)
+  eff_rr_calc = (h_av2 - h_av3) / (h_av2 - h_av3_min)
+  eff_rr_calc = eff_rr
+
+  # -------------------- State 4 (after evap cooler, supply side) --------------------
+  # T4 = T3 + eps*(Twb3 - T3) and Twb4 = Twb3 -> solves phi4
+  T4     = T3 + eff_ec*(T_wb3 - T3)
+  T_wb3  = HAPropsSI("Twb", "T", T4, "P", P, "R", phi4)
+
+  omega4 = HAPropsSI("W"  , "T", T4, "P", P, "R", phi4)
+  h_av4  = HAPropsSI("H"  , "T", T4, "P", P, "R", phi4)
+
+  # -------------------- State 5 (air leaving building) --------------------
+  # SHR relation:
+  h_av_x = HAPropsSI("H", "T", T5, "P", P, "W", omega4)
+  h_av5  = h_av4 + (h_av_x - h_av4)/SHR
+
+  # Robust: represent state 5 by bounded phi5 (prevents supersaturation blowups)
+  # Tie phi5 to h_av5 and compute omega5, Twb5 from (T5, phi5)
+  h_av5  = HAPropsSI("H"  , "T", T5, "P", P, "R", phi5)
+  omega5 = HAPropsSI("W"  , "T", T5, "P", P, "R", phi5)
+  T_wb5  = HAPropsSI("Twb", "T", T5, "P", P, "R", phi5)
+
+  # -------------------- State 6 (after evap cooler, exhaust side) --------------------
+  # T6 = T5 + eps*(Twb5 - T5) and Twb6 = Twb5 -> solves phi6
+  T6     = T5 + eff_ec*(T_wb5 - T5)
+  T_wb5  = HAPropsSI("Twb", "T", T6, "P", P, "R", phi6)
+
+  omega6 = HAPropsSI("W"  , "T", T6, "P", P, "R", phi6)
+  h_av6  = HAPropsSI("H"  , "T", T6, "P", P, "R", phi6)
+
+  # -------------------- State 7 (after rotary regenerator, exhaust side) --------------------
+  omega7 = omega6
+
+  # Energy balance (equal m_dot both sides): h2 + h6 = h3 + h7
+  h_av7 = h_av2 + h_av6 - h_av3
+
+  # Robust: solve T7 from forward enthalpy relation (avoid inverse HAPropsSI(T|P,W,H))
+  h_av7 = HAPropsSI("H"  , "T", T7, "P", P, "W", omega7)
+  phi7  = HAPropsSI("R"  , "T", T7, "P", P, "W", omega7)
+  T_wb7 = HAPropsSI("Twb", "T", T7, "P", P, "W", omega7)
+
+  # -------------------- State 8 (after heater, exhaust side) --------------------
+  omega8 = omega7
+  h_av8  = HAPropsSI("H"  , "T", T8, "P", P, "W", omega8)
+  phi8   = HAPropsSI("R"  , "T", T8, "P", P, "W", omega8)
+  T_wb8  = HAPropsSI("Twb", "T", T8, "P", P, "W", omega8)
+
+  # -------------------- State 9 (after desiccant wheel, regen outlet) --------------------
+  # Water balance: omega8 + omega1 = omega2 + omega9
+  omega9 = omega8 + omega1 - omega2
+
+  # Energy balance: h8 + h1 = h2 + h9
+  h_av9 = h_av8 + h_av1 - h_av2
+
+  # Robust: solve T9 from forward enthalpy relation (avoid inverse HAPropsSI(T|P,W,H))
+  h_av9 = HAPropsSI("H"  , "T", T9, "P", P, "W", omega9)
+  phi9  = HAPropsSI("R"  , "T", T9, "P", P, "W", omega9)
+  T_wb9 = HAPropsSI("Twb", "T", T9, "P", P, "W", omega9)
+
+  # -------------------- COP --------------------
+  COP = (h_av5 - h_av4) / (h_av8 - h_av7)
+
+  # -------------------- Convenience (°C) --------------------
+  T1_C = T1 - C_to_K
+  T2_C_out = T2 - C_to_K
+  T3_C = T3 - C_to_K
+  T4_C = T4 - C_to_K
+  T5_C_out = T5 - C_to_K
+  T6_C = T6 - C_to_K
+  T7_C = T7 - C_to_K
+  T8_C_out = T8 - C_to_K
+  T9_C = T9 - C_to_K
+
+  T_wb1_C = T_wb1 - C_to_K
+  T_wb3_C = T_wb3 - C_to_K
+  T_wb5_C = T_wb5 - C_to_K
+  T_wb9_C = T_wb9 - C_to_K
+
+report:
+  P
+  T_out_C, phi_out
+  T2_C
+  eff_rr, eff_ec
+  T_in_C, SHR
+  T8_C
+
+  # Key RHs (bounded)
+  phi2, phi4, phi5, phi6
+
+  # State 1
+  T1_C, omega1, h_av1, T_wb1_C
+
+  # State 2
+  T2_C_out, omega2, h_av2
+
+  # State 3 (+ effectiveness)
+  T3_C, phi3, omega3, h_av3, T_wb3_C
+  eff_rr_calc
+
+  # State 4
+  T4_C, omega4, h_av4
+
+  # State 5
+  T5_C_out, phi5, omega5, h_av5, T_wb5_C
+
+  # State 6
+  T6_C, phi6, omega6, h_av6
+
+  # State 7
+  T7_C, phi7, omega7, h_av7
+
+  # State 8
+  T8_C_out, phi8, omega8, h_av8
+
+  # State 9
+  T9_C, phi9, omega9, h_av9, T_wb9_C
+
+  COP
+
+solve:
+  backend = scipy
+  method  = krylov
+  tol     = 1e-9
+  max_iter = 800
+  max_restarts = 4

@@ -1,0 +1,162 @@
+title: Klein & Nellis Example 12.5-2 — Cooling Tower (continued) — HAPropsSI + Water PropsSI — TDPy
+
+given:
+  # --- constants ---
+  R_u = 8314.462618                 # J/(kmol*K)
+  atm_to_Pa = 101325.0              # Pa/atm
+  cfm_to_m3ps = 0.00047194745       # m^3/s per cfm
+  gal_to_m3 = 0.003785411784        # m^3 per gal (US)
+  hr_to_s = 3600.0                  # s per hr
+  galhr_to_m3ps = gal_to_m3/hr_to_s # m^3/s per (gal/hr)
+  ton_W = 3516.8528420667           # W per refrigeration ton
+
+  # --- inputs (from book) ---
+  T_w_in = (95.0 - 32.0)*5.0/9.0 + 273.15          # K (water inlet temperature)
+  V_dot_w = 6000.0*galhr_to_m3ps                   # m^3/s (water inlet volumetric flow rate)
+
+  T_amb = (74.0 - 32.0)*5.0/9.0 + 273.15           # K (ambient air dry-bulb)
+  phi_amb = 0.50                                    # - (ambient RH)
+  P = 1.0*atm_to_Pa                                 # Pa (ambient pressure)
+  V_dot_a = 10000.0*cfm_to_m3ps                      # m^3/s (air volumetric flow rate)
+
+  T_muw = (80.0 - 32.0)*5.0/9.0 + 273.15            # K (makeup water temperature)
+  eff_ct = 0.70                                      # - (cooling tower effectiveness)
+
+  # --- rename "state" values (no arrays) ---
+  T3 = T_amb
+  phi3 = phi_amb
+  T1 = T_w_in
+  T5 = T_muw
+
+equations:
+  # =======================
+  # State 3 (ambient air in)
+  # =======================
+  v_av3 = HAPropsSI("V","T",T3,"P",P,"R",phi3)       # m^3/kg_da
+  h_av3 = HAPropsSI("H","T",T3,"P",P,"R",phi3)       # J/kg_da
+  omega3 = HAPropsSI("W","T",T3,"P",P,"R",phi3)      # kg_w/kg_da
+  T_wb3 = HAPropsSI("Twb","T",T3,"P",P,"R",phi3)     # K
+  s_av3 = HAPropsSI("S","T",T3,"P",P,"R",phi3)       # J/(kg_da*K)
+
+  m_dot_a = V_dot_a / v_av3                          # kg_da/s
+
+  # =======================
+  # State 1 (water in)
+  # =======================
+  v1 = 1.0/PropsSI("D","T",T1,"P",P,"Water")         # m^3/kg
+  h1 = PropsSI("H","T",T1,"P",P,"Water")             # J/kg
+  s1 = PropsSI("S","T",T1,"P",P,"Water")             # J/(kg*K)
+  m_dot_w = V_dot_w / v1                             # kg/s
+
+  # =======================
+  # State 5 (makeup water)
+  # =======================
+  h5 = PropsSI("H","T",T5,"P",P,"Water")             # J/kg
+  s5 = PropsSI("S","T",T5,"P",P,"Water")             # J/(kg*K)
+
+  # =======================
+  # State 4 (air out) via effectiveness vs saturated-at-T_w_in
+  # =======================
+  h_av4_max = HAPropsSI("H","T",T1,"P",P,"R",1.0)     # J/kg_da
+  omega4_max = HAPropsSI("W","T",T1,"P",P,"R",1.0)    # kg_w/kg_da
+
+  eff_ct = (h_av4 - h_av3)/(h_av4_max - h_av3)
+  eff_ct = (omega4 - omega3)/(omega4_max - omega3)
+
+  T4 = HAPropsSI("T","P",P,"H",h_av4,"W",omega4)     # K
+  phi4 = HAPropsSI("R","P",P,"H",h_av4,"W",omega4)   # -
+  s_av4 = HAPropsSI("S","P",P,"H",h_av4,"W",omega4)  # J/(kg_da*K)
+
+  T_a_out_F = (T4 - 273.15)*9.0/5.0 + 32.0
+
+  # Makeup water flow = evaporated water into air stream
+  m_dot_muw = m_dot_a*(omega4 - omega3)              # kg/s
+
+  # =======================
+  # State 2 (water out) via energy balance
+  # =======================
+  m_dot_w*h1 + m_dot_muw*h5 + m_dot_a*h_av3 = m_dot_a*h_av4 + m_dot_w*h2
+
+  T2 = PropsSI("T","P",P,"H",h2,"Water")             # K
+  s2 = PropsSI("S","P",P,"H",h2,"Water")             # J/(kg*K)
+
+  T_w_out_F = (T2 - 273.15)*9.0/5.0 + 32.0
+
+  # =======================
+  # Performance metrics
+  # =======================
+  Q_dot_ct = m_dot_w*(h1 - h2)                        # W
+  Q_dot_ct_ton = Q_dot_ct / ton_W                     # ton
+
+  Range = T1 - T2                                     # K
+  Approach = T2 - T_wb3                               # K
+
+  # =======================
+  # Entropy generation (overall balance)
+  # =======================
+  m_dot_w*s1 + m_dot_muw*s5 + m_dot_a*s_av3 + S_dot_gen = m_dot_a*s_av4 + m_dot_w*s2
+
+  S_dot_gen_kW_per_K = S_dot_gen/1000.0
+
+guesses:
+  # air-out guesses
+  ? h_av4 = 1.0e5
+  ? omega4 = 0.027
+  ? T4 = 305.0
+  ? phi4 = 0.95
+  ? s_av4 = 120.0
+
+  # water-out guesses
+  ? h2 = 1.20e5
+  ? T2 = 302.0
+  ? s2 = 400.0
+
+  # flows + balances
+  ? m_dot_muw = 0.10
+  ? Q_dot_ct = 1.0e6
+  ? Q_dot_ct_ton = 300.0
+  ? Range = 5.0
+  ? Approach = 4.0
+  ? S_dot_gen = 200.0
+  ? S_dot_gen_kW_per_K = 0.2
+
+  # reporting-only
+  ? T_a_out_F = 90.0
+  ? T_w_out_F = 85.0
+
+report:
+  # inputs
+  T_w_in, V_dot_w
+  T_amb, phi_amb, P, V_dot_a
+  T_muw, eff_ct
+
+  # state 3 (air in)
+  v_av3, h_av3, omega3, T_wb3, s_av3
+  m_dot_a
+
+  # state 1,2,5 (water)
+  v1, m_dot_w
+  h1, s1
+  h2, s2
+  h5, s5
+  m_dot_muw
+
+  # state 4 (air out)
+  h_av4_max, omega4_max
+  h_av4, omega4, T4, phi4, s_av4
+  T_a_out_F
+
+  # performance
+  Q_dot_ct, Q_dot_ct_ton
+  Range, Approach
+  T_w_out_F
+
+  # entropy generation
+  S_dot_gen, S_dot_gen_kW_per_K
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 800
+  max_restarts = 2

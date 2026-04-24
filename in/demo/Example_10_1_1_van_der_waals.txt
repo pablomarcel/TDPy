@@ -1,0 +1,72 @@
+title: Klein & Nellis Example 10.1-1 — van der Waals EOS (Nitrogen) — TDPy (fixed guesses, square system)
+
+given:
+  # --- universal constant ---
+  R_u = 8314.462618                 # J/(kmol*K)
+
+  # --- fluid name for CoolProp ---
+  fluid = Nitrogen
+
+  # --- nitrogen properties (unrolled; SI mass basis) ---
+  MW = 28.0134                      # kg/kmol
+  R  = R_u / MW                     # J/(kg*K)
+
+  # critical properties (nitrogen)
+  T_crit = 126.192                  # K
+  P_crit = 3395800.0                # Pa
+
+  # van der Waals constants on MASS basis (use R specific)
+  a = 27.0*(R**2)*(T_crit**2)/(64.0*P_crit)   # Pa*(m^3/kg)^2
+  b = R*T_crit/(8.0*P_crit)                   # m^3/kg
+
+  # reduced state
+  P_r = 1.2
+  T_r = 1.2
+
+  # absolute state
+  P = P_r*P_crit                    # Pa
+  T = T_r*T_crit                    # K
+
+  # ideal-gas specific volume (for reference / guess)
+  v_ideal = R*T/P                   # m^3/kg
+
+  # CoolProp reference (EES analog): v = 1/rho
+  v_EES = 1.0/PropsSI("D","T",T,"P",P,fluid)
+  Z_EES = P*v_EES/(R*T)
+
+equations:
+  # Solve v from van der Waals EOS (P, T known)
+  P = R*T/(v - b) - a/(v**2)
+
+  # compressibility factor from van der Waals EOS
+  Z = P*v/(R*T)
+
+  # differences vs CoolProp reference
+  dv = v - v_EES
+  dZ = Z - Z_EES
+
+guesses:
+  # IMPORTANT: guesses must be NUMERIC (TDPy does not evaluate expressions in guesses)
+  ? v  = 0.011                      # close to v_ideal (~0.01103)
+  ? Z  = 0.70                       # close to expected real-gas Z at this state
+  ? dv = 0.0
+  ? dZ = 0.0
+
+report:
+  fluid
+  P_r, T_r
+  P_crit, T_crit
+  P, T
+  MW, R
+  a, b
+  v_ideal
+  v, Z
+  v_EES, Z_EES
+  dv, dZ
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-12
+  max_iter = 400
+  max_restarts = 2

@@ -1,0 +1,82 @@
+title: Klein & Nellis Example 12.1-1 (Building Air Conditioning System) — Part (f)
+
+given:
+  # Book inputs (English units shown in problem)
+  T_2_F = 45           # °F  air leaving chilled water coil
+  T_3_F = 65           # °F  air leaving steam coil (to conditioned space)
+  P_atm = 1.0          # atm total pressure
+
+  # Constants
+  eps = 0.622          # kg_v/kg_da (≈ Mw_v/Mw_a)
+
+# -----------------------------------------------------------------------------
+# IMPORTANT:
+# Part (f) uses the fact that the steam coil is a sensible heater (no moisture
+# added), so the water-vapor partial pressure at state 3 equals state 2:
+#   P_v,3 = P_v,2
+# Then:
+#   phi_3 = P_v,3 / P_sat,3
+#
+# NOTE on TDPy parser:
+# Avoid bare symbol aliasing like "P_v_3 = P_v_2" (can be treated as a string
+# symbol constant). Use "1.0 * ..." so it remains numeric.
+# -----------------------------------------------------------------------------
+
+guess:
+  # Temperatures (K)
+  T_2 = 280.0          # ~7°C
+  T_3 = 291.0          # ~18°C
+
+  # Pressure (Pa)
+  P = 101325.0
+
+  # Saturation / vapor pressures (Pa)
+  P_sat_2 = 1000.0
+  P_v_2   = 1000.0
+  P_sat_3 = 2100.0
+  P_v_3   = 1000.0
+
+  # Humidity ratio (kg/kg dry air)
+  omega_2 = 0.0063
+  omega_3 = 0.0063
+
+  # Relative humidity at state 3
+  phi_3    = 0.48
+  phi_3_HA = 0.48
+
+equations:
+  # Unit conversions
+  T_2 = (T_2_F - 32) * (5/9) + 273.15
+  T_3 = (T_3_F - 32) * (5/9) + 273.15
+  P   = P_atm * 101325
+
+  # --- State 2 is saturated (from part d): phi2 = 1.0 ---
+  P_sat_2 = PropsSI("P","T",T_2,"Q",0,"Water")
+  P_v_2   = 1.0 * P_sat_2
+
+  # Humidity ratio at state 2 (same as state 3 through sensible heating)
+  omega_2 = eps * P_v_2 / (P - P_v_2)
+  omega_3 = 1.0 * omega_2
+
+  # --- State 3: no moisture added in heater ---
+  P_v_3   = 1.0 * P_v_2
+  P_sat_3 = PropsSI("P","T",T_3,"Q",0,"Water")
+  phi_3   = P_v_3 / P_sat_3
+
+  # Cross-check using humid-air properties
+  phi_3_HA    = HAPropsSI("R","T",T_3,"P",P,"W",omega_3)
+  omega_3_HA  = HAPropsSI("W","T",T_3,"P",P,"R",phi_3)
+
+report:
+  T_2, T_3, P
+  P_sat_2, P_v_2
+  omega_2
+  P_sat_3, P_v_3
+  phi_3, phi_3_HA
+  omega_3_HA
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-9
+  max_iter = 80

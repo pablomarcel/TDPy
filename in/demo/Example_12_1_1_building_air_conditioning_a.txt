@@ -1,0 +1,56 @@
+title: Klein & Nellis Example 12.1-1 (Building A/C System) — Part (a) Humidity Ratio @ State 1
+
+given:
+  # Book inputs
+  P = 101325          # Pa  (1 atm)
+  T_1_F = 95          # °F  outdoor air dry-bulb
+  phi_1 = 0.70        # [-] relative humidity at state 1
+
+  # (Not needed for part a, but kept for continuity with parts b–g)
+  V_dot_1_cfm = 100   # cfm volumetric flow rate entering chilled water coil
+  T_2_F = 45          # °F  air leaving chilled water coil
+  T_3_F = 65          # °F  air leaving steam coil
+
+  # Constants
+  eps = 0.62198       # [-] Mw/Ma ≈ 18.015/28.97
+
+# -----------------------------------------------------------------------------
+# IMPORTANT:
+# We keep physically sane guesses because PropsSI/HAPropsSI will throw hard
+# if it gets garbage (e.g., T=1 K). This avoids penalty residual stalls.
+# -----------------------------------------------------------------------------
+
+guess:
+  T_1 = 308.15        # K  (~35 C)
+  P_sat_1 = 5600      # Pa  saturation vapor pressure @ ~35 C
+  P_v_1 = 3900        # Pa  partial pressure of water vapor
+  omega_1 = 0.025     # kg_v/kg_da  expected ~0.02516 from the book
+  omega_1_HA = 0.025  # kg_v/kg_da  direct HAPropsSI check
+
+equations:
+  # --- Unit conversions (EES converttemp equivalent) ---
+  T_1 = (T_1_F - 32)*5/9 + 273.15
+
+  # --- Book method (matches the textbook) ---
+  # P_sat,1 = P_sat(Water, T=T1)   -> use saturation pressure at T_1
+  P_sat_1 = PropsSI("P","T",T_1,"Q",0,"Water")
+
+  # P_v,1 = phi_1 * P_sat,1
+  P_v_1 = phi_1 * P_sat_1
+
+  # omega_1 = eps * P_v,1 / (P - P_v,1)
+  omega_1 = eps * P_v_1 / (P - P_v_1)
+
+  # --- Direct CoolProp humid-air check (should match omega_1 closely) ---
+  omega_1_HA = HAPropsSI("W","T",T_1,"P",P,"R",phi_1)
+
+report:
+  T_1
+  P_sat_1, P_v_1
+  omega_1, omega_1_HA
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-9
+  max_iter = 80

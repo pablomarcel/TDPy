@@ -1,0 +1,73 @@
+title: Klein & Nellis Example 10.2-1 — Complete EOS via h(s,P) finite differences (Water/Steam) — TDPy
+
+given:
+  # Universal gas constant (not strictly needed here, but kept for consistency)
+  R_u = 8314.462618                 # J/(kmol*K)
+
+  # Fluid name for CoolProp
+  fluid = "Water"
+
+  # Given state
+  s = 8000.0                        # J/(kg*K)
+  P = 1.0e6                         # Pa  (1 MPa)
+
+  # Finite-difference steps
+  ds = 0.001*s                      # J/(kg*K)
+  dP = 0.001*P                      # Pa
+
+equations:
+  # Enthalpy at (s,P)
+  h = PropsSI("Hmass","Smass",s,"P",P,fluid)
+
+  # --- temperature from central difference in s ---
+  h_plus_s  = PropsSI("Hmass","Smass",(s+ds),"P",P,fluid)
+  h_minus_s = PropsSI("Hmass","Smass",(s-ds),"P",P,fluid)
+  T = (h_plus_s - h_minus_s)/(2.0*ds)
+
+  # Temperature directly from EOS
+  T_EES = PropsSI("T","Smass",s,"P",P,fluid)
+
+  # --- specific volume from central difference in P ---
+  h_plus_P  = PropsSI("Hmass","Smass",s,"P",(P+dP),fluid)
+  h_minus_P = PropsSI("Hmass","Smass",s,"P",(P-dP),fluid)
+  v = (h_plus_P - h_minus_P)/(2.0*dP)
+
+  # Specific volume directly from EOS (v = 1/rho)
+  v_EES = 1.0/PropsSI("Dmass","Smass",s,"P",P,fluid)
+
+  # Differences (sanity checks)
+  dT = T - T_EES
+  dv = v - v_EES
+
+guesses:
+  # Thermo values (warm-start will overwrite)
+  ? h = 3.0e6
+  ? h_plus_s = 3.0e6
+  ? h_minus_s = 3.0e6
+  ? T = 700.0
+  ? T_EES = 700.0
+
+  ? h_plus_P = 3.0e6
+  ? h_minus_P = 3.0e6
+  ? v = 0.02
+  ? v_EES = 0.02
+
+  ? dT = 0.0
+  ? dv = 0.0
+
+report:
+  fluid
+  s, P
+  ds, dP
+  h
+  h_plus_s, h_minus_s
+  T, T_EES, dT
+  h_plus_P, h_minus_P
+  v, v_EES, dv
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-12
+  max_iter = 400
+  max_restarts = 2

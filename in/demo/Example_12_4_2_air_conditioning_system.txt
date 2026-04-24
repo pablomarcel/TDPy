@@ -1,0 +1,228 @@
+title: Klein & Nellis Example 12.4-2 (Air Conditioning System) — Mixing + Cooling/Dehumidify + Reheat + Building Load (Humid Air)
+
+given:
+  # -------------------- Given (book) --------------------
+  # Pressure is atmospheric throughout
+  P = 101325.0              # Pa
+
+  # Indoor (return) air condition (state 1)
+  T_in_C   = 24.0           # °C
+  phi_in   = 0.45           # [-]
+
+  # Outdoor air condition (state 2)
+  T_out_C  = 30.0           # °C
+  phi_out  = 0.58           # [-]
+
+  # Volumetric flow rates
+  V_dot_r_cfm   = 8200.0    # cfm return air
+  V_dot_out_cfm = 5100.0    # cfm outdoor air
+
+  # Building loads
+  Q_dot_b_kW    = 100.0     # kW heat gain to building
+  m_dot_v_b     = 0.0115    # kg/s moisture addition to building air
+
+  # -------------------- Constants / conversions --------------------
+  C_to_K      = 273.15
+  ft_to_m     = 0.3048
+  min_to_s    = 60.0
+  s_to_hr     = 3600.0
+
+  m3_per_gal  = 0.003785411784     # m^3/US gal
+  W_per_ton   = 3516.8528420667    # W per ton refrigeration (12000 Btu/hr)
+
+  # Psychrometric constants
+  eps         = 0.62198            # Mw/Ma
+  R_da        = 287.055            # J/(kg_da*K)
+  kappa_W     = 1.607858           # (Rv/Ra - 1) style factor used in v formula
+
+guess:
+  # -----------------------------------------------------------------------------
+  # IMPORTANT:
+  # Keep physically sane guesses so HAPropsSI never gets evaluated with garbage.
+  # -----------------------------------------------------------------------------
+
+  # humidity ratios (kg_v/kg_da)
+  omega1 = 0.0085
+  omega2 = 0.0155
+  omega3 = 0.0110
+  omega4 = 0.0067
+  omega5 = 0.0067
+
+  # enthalpies (J/kg_da)
+  h1 = 4.55e4
+  h2 = 6.85e4
+  h3 = 5.50e4
+  h4 = 3.00e4
+  h5 = 3.20e4
+  h_x = 4.00e4
+
+  # temperatures (K)
+  T3 = 298.0
+  T4 = 283.0
+  T5 = 288.0
+
+  # flow rates
+  m_dot_a_r   = 5.0
+  m_dot_a_out = 3.0
+  m_dot_a     = 8.0
+  m_dot_c     = 0.03
+
+  # coil duties
+  Q_dot_cwc = 2.0e5
+  Q_dot_sc  = 5.0e4
+
+equations:
+  # -------------------- Units --------------------
+  T1 = T_in_C  + C_to_K
+  T2 = T_out_C + C_to_K
+  Q_dot_b = Q_dot_b_kW * 1000.0
+
+  ft3_to_m3  = ft_to_m^3
+  cfm_to_m3s = ft3_to_m3 / min_to_s
+
+  V_dot_r   = V_dot_r_cfm   * cfm_to_m3s
+  V_dot_out = V_dot_out_cfm * cfm_to_m3s
+
+  # -------------------- State 1 (return / indoor air) --------------------
+  phi1 = phi_in
+  omega1 = HAPropsSI("W","T",T1,"P",P,"R",phi1)
+  h1     = HAPropsSI("H","T",T1,"P",P,"R",phi1)
+
+  # dry-air specific volume approximation (m^3/kg_da)
+  v_av1 = R_da*T1*(1 + kappa_W*omega1)/P
+
+  # dry-air mass flow rate from return stream
+  m_dot_a_r = V_dot_r / v_av1
+
+  # -------------------- State 2 (outdoor air) --------------------
+  phi2 = phi_out
+  omega2 = HAPropsSI("W","T",T2,"P",P,"R",phi2)
+  h2     = HAPropsSI("H","T",T2,"P",P,"R",phi2)
+
+  v_av2 = R_da*T2*(1 + kappa_W*omega2)/P
+  m_dot_a_out = V_dot_out / v_av2
+
+  # -------------------- Mixing (state 3) --------------------
+  # dry-air mass balance
+  m_dot_a = m_dot_a_r + m_dot_a_out
+
+  # water mass balance on mixing
+  omega3 = (m_dot_a_r*omega1 + m_dot_a_out*omega2) / m_dot_a
+
+  # energy balance on adiabatic mixing
+  h3 = (m_dot_a_r*h1 + m_dot_a_out*h2) / m_dot_a
+
+  # state 3 properties (from h3, omega3)
+  T3   = HAPropsSI("T","P",P,"W",omega3,"H",h3)
+  phi3 = HAPropsSI("R","T",T3,"P",P,"W",omega3)
+
+  # -------------------- Building balances (solve state 5) --------------------
+  # water mass balance on building: m_a*omega5 + m_v,b = m_a*omega1
+  omega5 = omega1 - (m_dot_v_b / m_dot_a)
+
+  # energy balance on building: m_a*h5 + Q_b = m_a*h1
+  h5 = h1 - (Q_dot_b / m_dot_a)
+
+  # state 5 properties (from h5, omega5)
+  T5   = HAPropsSI("T","P",P,"W",omega5,"H",h5)
+  phi5 = HAPropsSI("R","T",T5,"P",P,"W",omega5)
+
+  T5_C = T5 - C_to_K
+
+  # -------------------- Chilled water coil exit (state 4) --------------------
+  # No moisture change in steam coil => omega4 = omega5
+  omega4 = omega5
+
+  # State 4 is saturated leaving chilled-water coil (phi4 = 1),
+  # so find T4 from saturation: Pv4 = Psat(T4)
+  P_v4 = omega4*P/(eps + omega4)
+  T4 = PropsSI("T","P",P_v4,"Q",0,"Water")   # saturation temperature at Pv4
+
+  # humid-air enthalpy at state 4
+  h4 = HAPropsSI("H","T",T4,"P",P,"W",omega4)
+
+  # check saturation (should be ~1)
+  phi4_check = HAPropsSI("R","T",T4,"P",P,"W",omega4)
+
+  T4_C = T4 - C_to_K
+
+  # -------------------- Condensate rate --------------------
+  # water mass balance on chilled water coil:
+  #   m_a*omega3 = m_c + m_a*omega4
+  m_dot_c = m_dot_a*(omega3 - omega4)
+
+  # condensate specific volume (liquid water)
+  rho_c = PropsSI("D","T",T4,"P",P,"Water")
+  v_c   = 1/rho_c
+
+  V_dot_c_m3s    = m_dot_c * v_c
+  V_dot_c_gal_hr = V_dot_c_m3s * s_to_hr / m3_per_gal
+
+  # -------------------- Chilled-water coil heat transfer --------------------
+  # Use water enthalpy relative to saturated liquid at 0°C to match psychrometric conventions
+  href0 = PropsSI("H","T",273.15,"Q",0,"Water")
+  h_c   = PropsSI("H","T",T4,"P",P,"Water") - href0    # J/kg above 0°C sat liq
+
+  # energy balance (book form):
+  #   m_a*h3 = m_c*h_c + Q_cwc + m_a*h4
+  Q_dot_cwc = m_dot_a*h3 - m_dot_a*h4 - m_dot_c*h_c
+
+  Q_dot_cwc_kW  = Q_dot_cwc / 1000.0
+  Q_dot_cwc_ton = Q_dot_cwc / W_per_ton
+
+  # -------------------- Steam coil heat transfer (reheat) --------------------
+  #   m_a*h4 + Q_sc = m_a*h5
+  Q_dot_sc = m_dot_a*(h5 - h4)
+  Q_dot_sc_kW = Q_dot_sc / 1000.0
+
+  # -------------------- Sensible Heat Ratio (SHR) --------------------
+  # State x: heat from (5 -> x) at constant humidity ratio to T1
+  T_x     = T1
+  omega_x = omega5
+  h_x     = HAPropsSI("H","T",T_x,"P",P,"W",omega_x)
+
+  SHR = (h_x - h5) / (h1 - h5)
+
+  # -------------------- Convenience reporting (°C) --------------------
+  T1_C = T1 - C_to_K
+  T2_C = T2 - C_to_K
+  T3_C = T3 - C_to_K
+
+report:
+  # Inputs
+  P
+  T_in_C, phi_in
+  T_out_C, phi_out
+  V_dot_r_cfm, V_dot_out_cfm
+  Q_dot_b_kW
+  m_dot_v_b
+
+  # Dry-air mass flow rates
+  V_dot_r, V_dot_out
+  v_av1, v_av2
+  m_dot_a_r
+  m_dot_a_out
+  m_dot_a
+
+  # States 1–5
+  T1_C, phi1, omega1, h1
+  T2_C, phi2, omega2, h2
+  T3_C, phi3, omega3, h3
+  T4_C, phi4_check, omega4, h4
+  T5_C, phi5, omega5, h5
+
+  # Coil results
+  m_dot_c
+  V_dot_c_gal_hr
+  Q_dot_cwc_ton
+  Q_dot_cwc_kW
+  Q_dot_sc_kW
+
+  # SHR
+  SHR
+
+solve:
+  backend = scipy
+  method  = hybr
+  tol     = 1e-9
+  max_iter = 120

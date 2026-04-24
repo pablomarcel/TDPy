@@ -1,0 +1,173 @@
+title: Klein & Nellis Example 12.1-1 (Building Air Conditioning System) — Part (g)
+
+given:
+  # ---------------- Book inputs ----------------
+  V_dot_1_cfm = 100       # cfm  volumetric flow rate entering chilled water coil
+  T_1_F       = 95        # °F   outdoor air temperature
+  phi_1       = 0.70      # -    outdoor air relative humidity
+  T_2_F       = 45        # °F   air leaving chilled water coil
+  T_3_F       = 65        # °F   air leaving steam coil
+  P_atm       = 1.0       # atm  total pressure
+
+  # ---------------- Constants ----------------
+  eps         = 0.622           # Mw_v/Mw_a (humidity-ratio factor)
+  R_a         = 287.058         # J/(kg·K) dry-air gas constant
+  cp_a        = 1006.0          # J/(kg·K) dry-air cp (ideal-gas, hvac-style)
+  cfm_to_m3s  = 0.00047194745   # (m^3/s)/cfm
+  atm_to_Pa   = 101325.0        # Pa/atm
+
+# -----------------------------------------------------------------------------
+# Notes:
+# - Part (g) asks for heat transfer rates: Q_dot_cwc and Q_dot_stm.
+# - We recompute parts (a)-(f) inside this file so it is standalone.
+# - Dry-air enthalpy uses a simple ideal-gas model: h_a = cp_a*(T - 273.15).
+# - Water vapor/liquid enthalpies use PropsSI("H", ...) with "Water" (CoolProp),
+#   which gives consistent phase enthalpy differences (incl. condensation).
+# - Avoid alias-only assignments (e.g., P_v_2 = P_sat_2) because the interpreter
+#   may treat it as a symbol constant; use 1.0*... instead.
+# -----------------------------------------------------------------------------
+
+guess:
+  # Temperatures (K)
+  T_1   = 308.15
+  T_2   = 280.37
+  T_3   = 291.48
+  T_dp  = 302.0
+
+  # Pressures (Pa)
+  P         = 101325.0
+  P_sat_1   = 5600.0
+  P_v_1     = 3900.0
+  P_sat_2   = 1000.0
+  P_v_2     = 1000.0
+  P_sat_3   = 2100.0
+  P_v_3     = 1000.0
+  P_a_1     = 97000.0
+  P_a_2     = 100000.0
+  P_a_3     = 100000.0
+
+  # Humidity ratios (kg_v/kg_da)
+  omega_1     = 0.025
+  omega_2     = 0.0063
+  omega_3     = 0.0063
+
+  # Mass flow rates (kg/s)
+  m_dot_a     = 0.052
+  m_dot_v_1   = 0.00131
+  m_dot_v_2   = 0.00033
+  m_dot_c     = 0.00098
+
+  # Enthalpies (J/kg)
+  h_a_1 = 35000
+  h_a_2 = 7000
+  h_a_3 = 18000
+  h_v_1 = 2.55e6
+  h_v_2 = 2.50e6
+  h_v_3 = 2.52e6
+  h_c   = 3.0e5
+
+  # Heat transfer rates
+  Q_dot_cwc_full   = 4000
+  Q_dot_cwc_simpl  = 4000
+  Q_dot_stm        = 600
+
+equations:
+  # ---------------- Unit conversions ----------------
+  P     = P_atm * atm_to_Pa
+  V_dot_1 = V_dot_1_cfm * cfm_to_m3s
+
+  T_1 = (T_1_F - 32) * (5/9) + 273.15
+  T_2 = (T_2_F - 32) * (5/9) + 273.15
+  T_3 = (T_3_F - 32) * (5/9) + 273.15
+
+  # ---------------- Part (a): omega_1 ----------------
+  P_sat_1 = PropsSI("P","T",T_1,"Q",0,"Water")
+  P_v_1   = phi_1 * P_sat_1
+  omega_1 = eps * P_v_1 / (P - P_v_1)
+
+  # ---------------- Part (b): m_dot_a, m_dot_v_1 ----------------
+  P_a_1 = P - P_v_1
+  v_a_1 = R_a * T_1 / P_a_1
+  m_dot_a   = V_dot_1 / v_a_1
+  m_dot_v_1 = omega_1 * m_dot_a
+
+  # ---------------- Part (c): dew point (optional check) ----------------
+  T_dp = PropsSI("T","P",P_v_1,"Q",0,"Water")
+
+  # ---------------- Part (d): omega_2 at saturated state 2 ----------------
+  P_sat_2 = PropsSI("P","T",T_2,"Q",0,"Water")
+  P_v_2   = 1.0 * P_sat_2
+  omega_2 = eps * P_v_2 / (P - P_v_2)
+
+  # ---------------- Part (e): condensate rate ----------------
+  m_dot_v_2 = omega_2 * m_dot_a
+  m_dot_v_1 = m_dot_c + m_dot_v_2
+
+  # ---------------- Part (f): reheat to state 3 (no moisture added) ----------------
+  omega_3 = 1.0 * omega_2
+  P_v_3   = 1.0 * P_v_2
+  P_sat_3 = PropsSI("P","T",T_3,"Q",0,"Water")
+  phi_3   = P_v_3 / P_sat_3
+
+  # ---------------- Part (g): enthalpies ----------------
+  # Dry air enthalpy model (ideal gas; depends only on T)
+  h_a_1 = cp_a * (T_1 - 273.15)
+  h_a_2 = cp_a * (T_2 - 273.15)
+  h_a_3 = cp_a * (T_3 - 273.15)
+
+  # Water vapor enthalpy at partial pressure (states 1 and 3)
+  h_v_1 = PropsSI("H","T",T_1,"P",P_v_1,"Water")
+  h_v_3 = PropsSI("H","T",T_3,"P",P_v_3,"Water")
+
+  # State 2 water vapor is saturated (T2 < dew point ⇒ phi2 = 1)
+  h_v_2 = PropsSI("H","T",T_2,"Q",1,"Water")
+
+  # Condensate leaves near T2 at ~1 atm (compressed liquid)
+  h_c = PropsSI("H","T",T_2,"P",P,"Water")
+
+  # ---------------- Energy balances ----------------
+  # Chilled water coil (book Eq. 1)
+  Q_dot_cwc_full = m_dot_a*h_a_1 + m_dot_v_1*h_v_1 - (m_dot_a*h_a_2 + m_dot_v_2*h_v_2 + m_dot_c*h_c)
+
+  # Chilled water coil (book Eq. 2: neglect condensate enthalpy term)
+  Q_dot_cwc_simpl = m_dot_a*h_a_1 + m_dot_v_1*h_v_1 - (m_dot_a*h_a_2 + m_dot_v_2*h_v_2)
+
+  # Steam coil energy balance
+  P_a_2 = P - P_v_2
+  P_a_3 = P - P_v_3
+  Q_dot_stm = (m_dot_a*h_a_3 + m_dot_v_2*h_v_3) - (m_dot_a*h_a_2 + m_dot_v_2*h_v_2)
+
+  # Convenience outputs
+  Q_dot_cwc_full_kW  = Q_dot_cwc_full / 1000
+  Q_dot_cwc_simpl_kW = Q_dot_cwc_simpl / 1000
+  Q_dot_stm_W        = Q_dot_stm
+  Q_dot_stm_kW       = Q_dot_stm / 1000
+
+report:
+  # State checks
+  T_1, T_2, T_3
+  T_dp
+  omega_1, omega_2, omega_3
+  phi_3
+
+  # Mass flows
+  m_dot_a
+  m_dot_v_1, m_dot_v_2
+  m_dot_c
+
+  # Enthalpies used in balances
+  h_a_1, h_a_2, h_a_3
+  h_v_1, h_v_2, h_v_3
+  h_c
+
+  # Final answers
+  Q_dot_cwc_full_kW
+  Q_dot_cwc_simpl_kW
+  Q_dot_stm_W
+  Q_dot_stm_kW
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-9
+  max_iter = 80
