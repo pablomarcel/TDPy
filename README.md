@@ -1,8 +1,34 @@
 # TDPy
 
-**Python-first thermodynamics, property evaluation, and nonlinear equation solving inspired by EES.**
+**Python-first thermodynamics, property evaluation, nonlinear equation solving, optimization, and thermal-analysis workflows inspired by EES.**
 
 TDPy is a Python-first engineering toolkit for thermodynamics, property evaluation, nonlinear equation solving, optimization, and 1D thermal analysis. It is inspired by the EES workflow, but built as an open, scriptable, extensible platform around JSON/TXT inputs, CLI tools, and GUI workflows.
+
+In plain terms: **TDPy is an open engineering workbench for solving thermodynamics and equation-based engineering problems in Python.**
+
+---
+
+## Screenshots
+
+### GUI workflow — light theme
+
+![TDPy industrial freezer case in light theme](docs/images/industrial_freezer_light.png)
+
+The light-theme workflow shows the main TDPy desktop interface with file selection on the left and solver results on the right. This layout is useful when running saved engineering examples from the project input library and quickly inspecting the computed outputs.
+
+### GUI workflow — dark theme
+
+![TDPy industrial freezer case in dark theme](docs/images/industrial_freezer_dark.png)
+
+The dark-theme workflow shows the same industrial-freezer style case with a darker interface. The goal is to make repeated engineering runs more comfortable while keeping the solver workflow clear: select an input, run the problem, and inspect the results.
+
+### Equation-editor workflow
+
+![TDPy helium balloon equation editor workflow](docs/images/helium_balloon.png)
+
+TDPy also supports a manual equation-editor workflow. Instead of selecting a saved input file, users can type or paste equations directly into the editor pane, run the solver, and view the computed result in the output panel. This is closer to the interactive feel of an EES-style equation-solving session.
+
+---
 
 ## Why TDPy
 
@@ -14,34 +40,50 @@ Engineering tools like EES are powerful because they combine property calls, equ
 - easier to integrate with modern Python tooling
 - usable through both text-based and GUI workflows
 
+The project is meant for engineers who want the convenience of equation-oriented thermodynamics workflows without being locked into a closed desktop environment.
+
+---
+
 ## What it does
 
 TDPy currently focuses on these capabilities:
 
-- **Thermodynamic property evaluation**
-  - property/state evaluation workflows
-  - support for multiple backend styles, including CoolProp-oriented workflows and native mixture backends
-  - engineering-friendly input/output structures
+### Thermodynamic property evaluation
 
-- **Nonlinear equation solving**
-  - EES-style equation-system workflows
-  - generic nonlinear system solving
-  - JSON/TXT driven inputs
-  - optional interpreter flow from text to structured problem specs
+- property/state evaluation workflows
+- support for multiple backend styles, including CoolProp-oriented workflows and native mixture backends
+- engineering-friendly input/output structures
+- reusable property-call patterns for thermodynamics examples
 
-- **Optimization**
-  - optimization workflows built on the same equation-oriented architecture
-  - design variables, objective functions, and constraints
-  - solver-routing through a common application layer
+### Nonlinear equation solving
 
-- **1D thermal / engineering analysis**
-  - support for engineering problem pipelines beyond pure equation solving
-  - extensible architecture for additional domain solvers
+- EES-style equation-system workflows
+- generic nonlinear system solving
+- JSON/TXT driven inputs
+- optional interpreter flow from text to structured problem specs
+- report-variable support for clean engineering outputs
 
-- **CLI + GUI**
-  - command-line workflows for reproducible runs
-  - Dear PyGui frontend for interactive usage
-  - shared application service underneath both interfaces
+### Optimization
+
+- optimization workflows built on the same equation-oriented architecture
+- design variables, objective functions, and constraints
+- solver routing through a common application layer
+- room to expand into design studies and parameter searches
+
+### 1D thermal / engineering analysis
+
+- support for engineering problem pipelines beyond pure equation solving
+- extensible architecture for additional domain solvers
+- practical thermal-analysis workflows that can grow alongside the property and equation solvers
+
+### CLI + GUI
+
+- command-line workflows for reproducible runs
+- Dear PyGui frontend for interactive usage
+- shared application service underneath both interfaces
+- file-picker and direct equation-editor modes
+
+---
 
 ## Project philosophy
 
@@ -52,21 +94,31 @@ TDPy is built around a few core ideas:
 - **Open architecture**: modular packages instead of a monolithic black box
 - **File-driven reproducibility**: JSON, YAML, and TXT inputs that can be version-controlled
 - **Extensibility**: easy to add new problem types, solvers, and property backends
+- **GUI and CLI parity**: the desktop interface and command-line tools should sit on top of the same backend logic
+
+---
 
 ## Repository structure
 
 The codebase is organized into focused packages and top-level orchestration scripts.
 
-- `thermo_props/` — thermodynamic property evaluation backends and facade
-- `equations/` — equation specs, safe evaluation, solver routing, optimization support
-- `interpreter/` — text-to-spec interpretation pipeline
-- `units/` — lightweight unit parsing and conversion
-- `gui_core_dpg.py` — Dear PyGui frontend
-- `app.py` — central application service
-- `cli.py` — command-line entry point
-- `design.py` — problem/spec builder layer
-- `in/` — example/problem inputs
-- `out/` — generated outputs
+```text
+thermo_props/        # thermodynamic property evaluation backends and facade
+equations/           # equation specs, safe evaluation, solver routing, optimization support
+interpreter/         # text-to-spec interpretation pipeline
+units/               # lightweight unit parsing and conversion
+docs/images/         # README screenshots and documentation images
+in/                  # example/problem inputs
+out/                 # generated outputs
+
+gui_core_dpg.py      # Dear PyGui frontend
+app.py               # central application service
+cli.py               # command-line entry point
+design.py            # problem/spec builder layer
+main.py              # interactive text/menu entry point
+```
+
+---
 
 ## Typical workflows
 
@@ -94,6 +146,22 @@ python -m gui_core_dpg
 python -m main
 ```
 
+---
+
+## GUI workflows
+
+TDPy has two useful desktop interaction patterns.
+
+### File-driven workflow
+
+Use the left pane to select a saved problem input, run it, and inspect the solver result in the right pane. This is ideal for repeatable engineering examples, textbook-style problems, and version-controlled studies.
+
+### Equation-editor workflow
+
+Use the editor pane to manually enter equations and solver setup information. This is useful for quick experiments, one-off engineering calculations, and EES-style equation-solving sessions where the problem is easier to type directly than to package as a full JSON file.
+
+---
+
 ## Input style
 
 TDPy is designed around engineering-friendly input files:
@@ -102,13 +170,16 @@ TDPy is designed around engineering-friendly input files:
 - **YAML** for readable configs where supported
 - **TXT** for lightweight equation/property workflows and interpreter-based flows
 
-This makes it suitable for both:
+This makes it suitable for:
+
 - quick experimentation
 - structured engineering studies
 - future GUI integration
 - version-controlled analysis workflows
 
-## Input Example
+---
+
+## Input example
 
 ```text
 title: Example 1.6-2 Power required by a vehicle (Prius vs Escape) — TDPy
@@ -201,6 +272,8 @@ report:
   F_r_escape, F_d_escape, W_dot_escape, W_dot_escape_kW, W_dot_escape_hp
 ```
 
+---
+
 ## Current direction
 
 TDPy is evolving toward an open engineering environment that combines:
@@ -211,18 +284,26 @@ TDPy is evolving toward an open engineering environment that combines:
 - engineering simulation workflows
 - GUI and CLI frontends on top of the same backend services
 
-In plain terms: it is an attempt to bring key EES-style engineering workflows into a modern Python architecture.
+The long-term direction is a Python-native alternative to closed thermodynamics and equation-solving workflows.
+
+---
 
 ## Status
 
-TDPy is actively evolving. The architecture is already modular, but the project is still growing in scope, features, and polish.
+**Current release stage:** early alpha / usable engineering prototype.
+
+The architecture is already modular, and the project can run meaningful engineering examples, but the codebase is still growing in scope, features, and polish.
 
 Expect:
+
 - active refactoring
 - new problem types
 - backend expansion
 - GUI improvements
 - more example inputs and workflows
+- stronger packaging and release polish over time
+
+---
 
 ## Who it is for
 
@@ -232,16 +313,58 @@ TDPy is a good fit for:
 - thermal/fluids engineers
 - engineering students
 - researchers
+- Python developers building engineering tools
 - anyone who likes the EES workflow but wants something more open, scriptable, and Python-native
-
-## Suggested GitHub topics
-
-`python` `thermodynamics` `equation-solver` `nonlinear-solver` `scientific-computing` `engineering` `thermal-engineering` `simulation` `property-calculations` `optimization` `coolprop` `dearpygui`
-
-## Long-term vision
-
-A Python-native engineering platform that can serve as an open, extensible alternative to closed thermodynamics/equation-solving workflows.
 
 ---
 
-If you are interested in thermodynamics, engineering computation, equation-based modeling, or EES-style workflows in Python, TDPy is the project.
+## Suggested GitHub topics
+
+```text
+python
+thermodynamics
+equation-solver
+nonlinear-solver
+scientific-computing
+engineering
+thermal-engineering
+simulation
+property-calculations
+optimization
+coolprop
+dearpygui
+```
+
+---
+
+## Roadmap
+
+Natural next-step upgrades include:
+
+- richer thermodynamic property examples
+- broader backend support
+- stronger equation interpreter behavior
+- more robust units handling
+- improved GUI session management
+- polished input/output panels
+- better error reporting for failed solves
+- more complete example libraries from thermodynamics textbooks
+- packaging into a friendlier installable engineering application
+
+---
+
+## Long-term vision
+
+TDPy aims to become a Python-native engineering platform that can serve as an open, extensible alternative to closed thermodynamics and equation-solving workflows.
+
+The goal is not just to solve isolated equations. The goal is to create a practical environment where property calls, nonlinear systems, optimization, thermal analysis, GUI workflows, and command-line automation can live together in one inspectable Python codebase.
+
+---
+
+## License
+
+See [`LICENSE`](LICENSE).
+
+---
+
+If you are interested in thermodynamics, engineering computation, equation-based modeling, or EES-style workflows in Python, **TDPy is the project.**
