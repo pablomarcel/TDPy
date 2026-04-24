@@ -1,0 +1,222 @@
+title: Klein & Nellis Example 9.2-4 — Flash Intercooled Cycle for a Blast Freezer (Ammonia) — TDPy
+
+given:
+  # =========================
+  # Inputs (unrolled)
+  # =========================
+  fluid = Ammonia
+
+  # Outdoor air temperature (90°F) -> K
+  T_H = (90.0 - 32.0)*(5.0/9.0) + 273.15
+
+  # Freezer air temperature (-50°F) -> K
+  T_C_F = -50.0
+  T_C = (T_C_F - 32.0)*(5.0/9.0) + 273.15
+
+  DT_cond = 4.0                     # K
+  DT_evap = 5.0                     # K
+  eta_c = 0.72                      # -
+
+  # Intermediate pressure
+  P_int = 800000.0                  # Pa (800 kPa)
+
+  # =========================
+  # Conversions / economic inputs (unrolled; NO scientific notation)
+  # =========================
+  ton_to_W = 3516.85284             # W per ton of refrigeration
+  cfm_to_m3s = 0.00047194745        # m^3/s per cfm
+
+  Q_dot_evap_req_ton = 1.5          # ton (required freezer load)
+  Q_dot_evap = Q_dot_evap_req_ton * ton_to_W   # W
+
+  ec = 0.12/3600000.0               # $/J   (0.12 $/kW-hr)
+  year_to_s = 31536000.0            # s/year (365 days)
+  time = 5.0*year_to_s              # s (5 years)
+
+  cc = 495000.0                     # $-s/m^3  (compressor cost per unit suction flow rate)
+
+equations:
+  # ============================================================
+  # State 6: condenser exit / throttle 1 inlet (sat liquid)
+  # ============================================================
+  T6 = T_H + DT_cond
+  P6 = PropsSI("P","T",T6,"Q",0,fluid)
+  h6 = PropsSI("HMASS","T",T6,"Q",0,fluid)
+  s6 = PropsSI("SMASS","T",T6,"Q",0,fluid)
+
+  # ============================================================
+  # State 2: evaporator exit / compressor 1 inlet (sat vapor)
+  # ============================================================
+  T2 = T_C - DT_evap
+  P2 = PropsSI("P","T",T2,"Q",1,fluid)
+  h2 = PropsSI("HMASS","T",T2,"Q",1,fluid)
+  s2 = PropsSI("SMASS","T",T2,"Q",1,fluid)
+  v2 = 1.0/PropsSI("D","T",T2,"Q",1,fluid)
+
+  # ============================================================
+  # State 3: compressor 1 exit / mixing inlet (P = P_int)
+  # ============================================================
+  P3 = P_int
+  s_s3 = s2
+  h_s3 = PropsSI("HMASS","P",P3,"SMASS",s_s3,fluid)
+  w_s1_over_mevap = h_s3 - h2
+  w_1_over_mevap = w_s1_over_mevap/eta_c
+  h3 = h2 + w_1_over_mevap
+  T3 = PropsSI("T","P",P3,"HMASS",h3,fluid)
+  s3 = PropsSI("SMASS","P",P3,"HMASS",h3,fluid)
+
+  # ============================================================
+  # State 7: throttle 1 exit / flash chamber inlet (h7 = h6, P = P_int)
+  # ============================================================
+  h7 = h6
+  P7 = P_int
+  T7 = PropsSI("T","P",P7,"HMASS",h7,fluid)
+  s7 = PropsSI("SMASS","P",P7,"HMASS",h7,fluid)
+  x7 = PropsSI("Q","P",P7,"HMASS",h7,fluid)
+
+  # ============================================================
+  # State 8: flash chamber liquid outlet / throttle 2 inlet (sat liquid at P_int)
+  # ============================================================
+  P8 = P_int
+  T8 = PropsSI("T","P",P8,"Q",0,fluid)
+  h8 = PropsSI("HMASS","P",P8,"Q",0,fluid)
+  s8 = PropsSI("SMASS","P",P8,"Q",0,fluid)
+
+  # ============================================================
+  # State 4: flash chamber vapor outlet / compressor 2 inlet (sat vapor at P_int)
+  # ============================================================
+  P4 = P_int
+  T4 = PropsSI("T","P",P4,"Q",1,fluid)
+  h4 = PropsSI("HMASS","P",P4,"Q",1,fluid)
+  s4 = PropsSI("SMASS","P",P4,"Q",1,fluid)
+  v4 = 1.0/PropsSI("D","P",P4,"Q",1,fluid)
+
+  # ============================================================
+  # State 5: compressor 2 exit / condenser inlet (P = P6)
+  # ============================================================
+  P5 = P6
+  s_s5 = s4
+  h_s5 = PropsSI("HMASS","P",P5,"SMASS",s_s5,fluid)
+  w_s2_over_mcond = h_s5 - h4
+  w_2_over_mcond = w_s2_over_mcond/eta_c
+  h5 = h4 + w_2_over_mcond
+  T5 = PropsSI("T","P",P5,"HMASS",h5,fluid)
+  s5 = PropsSI("SMASS","P",P5,"HMASS",h5,fluid)
+
+  # ============================================================
+  # State 1: throttle 2 exit / evaporator inlet (h1 = h8, P = P2)
+  # ============================================================
+  h1 = h8
+  P1 = P2
+  T1 = PropsSI("T","P",P1,"HMASS",h1,fluid)
+  s1 = PropsSI("SMASS","P",P1,"HMASS",h1,fluid)
+
+  # ============================================================
+  # Flash tank energy balance -> solve for mass-flow ratio r = m_evap/m_cond
+  # h7 + r*h3 = r*h8 + h4
+  # ============================================================
+  h7 + r_mevap_over_mcond*h3 = r_mevap_over_mcond*h8 + h4
+
+  # Compressor 1 work per condenser mass flow
+  w_1_over_mcond = w_1_over_mevap * r_mevap_over_mcond
+
+  # Evaporator heat transfer per condenser mass flow
+  q_evap_over_mcond = r_mevap_over_mcond * (h2 - h1)
+
+  # COP (dimensionless; cancels mass flow)
+  COP = q_evap_over_mcond / (w_1_over_mcond + w_2_over_mcond)
+
+  # Refrigeration per unit compressor suction volumetric flow (W per (m^3/s))
+  q_evap_over_Vdot_c = q_evap_over_mcond / (v4 + r_mevap_over_mcond*v2)
+
+  # Same quantity reported in ton/cfm
+  q_evap_over_Vdot_c_tonpcfm = q_evap_over_Vdot_c * cfm_to_m3s / ton_to_W
+
+  # Required compressor power for the specified load
+  W_dot_c = Q_dot_evap / COP
+
+  # Operating cost
+  OC = W_dot_c * time * ec
+
+  # Compressor suction volumetric flow required
+  V_dot_c = Q_dot_evap / q_evap_over_Vdot_c
+
+  # Compressor cost and total cost
+  CompC = V_dot_c * cc
+  TotalC = CompC + OC
+
+  # Convenience outputs
+  W_dot_c_kW = W_dot_c/1000.0
+  V_dot_c_cfm = V_dot_c / cfm_to_m3s
+
+guesses:
+  # Flash tank ratio (m_evap/m_cond)
+  ? r_mevap_over_mcond = 2.0
+
+  # Compressor work / heat per mass (rough)
+  ? w_1_over_mevap = 200000.0
+  ? w_2_over_mcond = 200000.0
+  ? q_evap_over_mcond = 800000.0
+  ? COP = 1.0
+
+  # Suction volumes (rough)
+  ? v2 = 1.0
+  ? v4 = 0.2
+
+  # Derived performance / sizing
+  ? q_evap_over_Vdot_c = 500000.0
+  ? q_evap_over_Vdot_c_tonpcfm = 0.5
+  ? W_dot_c = 10000.0
+  ? V_dot_c = 0.5
+
+  # Costs
+  ? OC = 100000.0
+  ? CompC = 100000.0
+  ? TotalC = 200000.0
+
+report:
+  # Inputs
+  fluid
+  T_H, T_C
+  DT_cond, DT_evap
+  P_int
+  eta_c
+
+  # Key pressures
+  P6, P2
+
+  # State temperatures (K)
+  T6, T7, T8, T4, T5, T2, T3, T1
+
+  # State enthalpies (J/kg)
+  h6, h7, h8, h4, h5, h2, h3, h1
+
+  # State entropies (J/kg-K)
+  s6, s7, s8, s4, s5, s2, s3, s1
+
+  # Quality after throttle 1
+  x7
+
+  # Specific volumes (m^3/kg)
+  v2, v4
+
+  # Flash ratio + performance
+  r_mevap_over_mcond
+  COP
+  q_evap_over_Vdot_c
+  q_evap_over_Vdot_c_tonpcfm
+
+  # Required sizing and cost
+  Q_dot_evap
+  W_dot_c, W_dot_c_kW
+  V_dot_c, V_dot_c_cfm
+  CompC
+  OC
+  TotalC
+
+solve:
+  backend = auto
+  method = hybr
+  tol = 0.0000000001
+  max_iter = 800
+  max_restarts = 2

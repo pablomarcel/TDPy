@@ -1,0 +1,237 @@
+title: Example 8.3-4 — Turbofan Engine (ideal-gas, v2: strong guesses)
+
+given:
+  # Inputs (SI)
+  M = 0.85
+  T_amb = 227.0
+  P_amb = 29080.275
+  K_p = 0.45
+
+  eta_fan = 0.88
+  eta_LPc = 0.89
+  eta_HPc = 0.90
+  eta_LPt = 0.91
+  eta_HPt = 0.92
+  eta_n = 0.93
+
+  HC = 48000000.0
+  PR_fan = 1.6
+  PR_LPc = 2.5
+  PR_HPc = 12.0
+  T_t_in = 1573.15
+  F_thrust = 15000.0
+
+  # Ideal-gas air constants (constant properties)
+  R_air = 287.058
+  gamma = 1.4
+  cp = 1004.703
+  cv = 717.645
+
+  # Unit conversion helper: (kg/s)/N -> (lbm/hr)/lbf
+  kgpsN_to_lbmhrlbf = 35303.94
+
+  # State 1 / nozzle exit pressures
+  T1 = T_amb
+  P1 = P_amb
+  P10 = P_amb
+
+equations:
+  # --------------------
+  # State 1 (freestream)
+  # --------------------
+  a1 = sqrt(gamma * R_air * T1)
+  Vel1 = M * a1
+  h1 = cp * T1
+  v1 = R_air * T1 / P1
+
+  # --------------------
+  # State 2 (diffuser)
+  # --------------------
+  P2 = P1 + K_p * Vel1 * Vel1 / v1
+  h2 = h1 + Vel1 * Vel1 / 2.0
+  T2 = h2 / cp
+
+  # --------------------
+  # State 3 (fan exit)
+  # --------------------
+  P3 = P2 * PR_fan
+  T3s = T2 * ((P3 / P2) ** ((gamma - 1.0) / gamma))
+  h3s = cp * T3s
+  w_s_fan = h3s - h2
+  w_fan = w_s_fan / eta_fan
+  h3 = h2 + w_fan
+  T3 = h3 / cp
+  W_fan_per_kg = h3 - h2
+
+  # --------------------
+  # State 4 (LP compressor exit, core only)
+  # --------------------
+  P4 = P3 * PR_LPc
+  T4s = T3 * ((P4 / P3) ** ((gamma - 1.0) / gamma))
+  h4s = cp * T4s
+  w_s_LPc = h4s - h3
+  w_LPc = w_s_LPc / eta_LPc
+  h4 = h3 + w_LPc
+  T4 = h4 / cp
+  W_LPc_per_mdot = f * (h4 - h3)
+
+  # --------------------
+  # State 5 (HP compressor exit, core only)
+  # --------------------
+  P5 = P4 * PR_HPc
+  T5s = T4 * ((P5 / P4) ** ((gamma - 1.0) / gamma))
+  h5s = cp * T5s
+  w_s_HPc = h5s - h4
+  w_HPc = w_s_HPc / eta_HPc
+  h5 = h4 + w_HPc
+  T5 = h5 / cp
+  W_HPc_per_mdot = f * (h5 - h4)
+
+  # --------------------
+  # State 6 (combustor exit / turbine inlet)
+  # --------------------
+  T6 = T_t_in
+  P6 = P5
+  h6 = cp * T6
+
+  # Combustor energy balance (solves for AF)
+  f * h5 + HC / AF = h6 * (f + 1.0 / AF)
+
+  # --------------------
+  # State 7 (HP turbine exit)
+  # --------------------
+  T7s = T6 * ((P7 / P6) ** ((gamma - 1.0) / gamma))
+  h7s = cp * T7s
+  w_s_HPt = h6 - h7s
+  w_HPt = eta_HPt * w_s_HPt
+  h7 = h6 - w_HPt
+  T7 = h7 / cp
+
+  W_HPt_per_mdot = (f + 1.0 / AF) * (h6 - h7)
+  W_HPt_per_mdot = W_HPc_per_mdot
+
+  # --------------------
+  # State 8 (LP turbine exit)
+  # --------------------
+  P8 = P3
+  T8s = T7 * ((P8 / P7) ** ((gamma - 1.0) / gamma))
+  h8s = cp * T8s
+  w_s_LPt = h7 - h8s
+  w_LPt = eta_LPt * w_s_LPt
+  h8 = h7 - w_LPt
+  T8 = h8 / cp
+
+  W_LPt_per_mdot = (f + 1.0 / AF) * (h7 - h8)
+  W_LPt_per_mdot = W_LPc_per_mdot + W_fan_per_kg
+
+  # --------------------
+  # Bypass ratio
+  # --------------------
+  BPR = (1.0 - f) / f
+
+  # --------------------
+  # State 9 (mixer / nozzle inlet)
+  # --------------------
+  P9 = P8
+  h9 = f * h8 + (1.0 - f) * h3
+  T9 = h9 / cp
+
+  # --------------------
+  # State 10 (nozzle exit to ambient pressure)
+  # --------------------
+  T10s = T9 * ((P10 / P9) ** ((gamma - 1.0) / gamma))
+  h10s = cp * T10s
+  Vel_s10 = sqrt(2.0 * (h9 - h10s))
+  Vel10 = sqrt(eta_n) * Vel_s10
+  h10 = h9 - Vel10 * Vel10 / 2.0
+  T10 = h10 / cp
+
+  # --------------------
+  # Thrust requirement (solves for m_dot)
+  # --------------------
+  F_thrust = m_dot * (1.0 + 1.0 / AF) * Vel10 - m_dot * Vel1
+
+  # --------------------
+  # Performance metrics
+  # --------------------
+  m_dot_f = m_dot / AF
+  SFC = m_dot_f / F_thrust
+  SFC_English = SFC * kgpsN_to_lbmhrlbf
+
+  eta_th = ((m_dot + m_dot_f) * Vel10 * Vel10 - m_dot * Vel1 * Vel1) / (2.0 * m_dot_f * HC)
+  eta_p  = 2.0 * Vel1 * F_thrust / ((m_dot + m_dot_f) * Vel10 * Vel10 - m_dot * Vel1 * Vel1)
+  eta_o  = eta_th * eta_p
+
+guesses:
+  # These guesses are taken from the “near-solution” GEKKO run you posted,
+  # and they dramatically reduce startup transients / divergence.
+
+  ? f = 0.11809349343
+  ? AF = 554.67971877
+  ? P7 = 538280.65384
+  ? m_dot = 129.65186256
+
+  ? W_LPc_per_mdot = 12057.783813
+  ? W_HPc_per_mdot = 55048.273832
+
+  ? T7s = 1076.4292886
+  ? h7s = 1081491.7356
+  ? w_s_HPt = 499056.78888
+  ? w_HPt = 459132.24577
+  ? h7 = 1121416.2787
+  ? T7 = 1116.1669455
+  ? W_HPt_per_mdot = 55048.273832
+
+  ? T8s = 617.27564434
+  ? h8s = 620178.69169
+  ? w_s_LPt = 501237.58699
+  ? w_LPt = 456126.20417
+  ? h8 = 665290.07452
+  ? T8 = 662.17586144
+  ? W_LPt_per_mdot = 54687.860459
+
+  ? BPR = 7.4678670346
+  ? h9 = 346360.35862
+  ? T9 = 344.73905086
+  ? T10s = 270.78417465
+  ? h10s = 272057.67262
+  ? Vel_s10 = 385.49367308
+  ? Vel10 = 371.75663538
+  ? h10 = 277258.86064
+  ? T10 = 275.96101599
+
+  ? m_dot_f = 0.23374184799
+  ? SFC = 0.000015582789866
+  ? SFC_English = 0.55013387846
+  ? eta_th = 0.41913346363
+  ? eta_p = 0.81892081801
+  ? eta_o = 0.34323711889
+
+report:
+  # Core solution items
+  f, AF, P7, BPR, m_dot, m_dot_f
+  Vel1, Vel10
+  SFC, SFC_English
+  eta_th, eta_p, eta_o
+
+  # Helpful state summary
+  T1, P1
+  T2, P2
+  T3, P3
+  T4, P4
+  T5, P5
+  T6, P6
+  T7
+  T8
+  T9
+  T10, P10
+
+solve:
+  # If your run command still routes to GEKKO, this tolerance is tuned to pass
+  # the scaled-residual ok-rule you showed (~3e-5 maxabs_scaled).
+  # If it routes to SciPy, this is also a reasonable stopping tolerance.
+  backend = scipy
+  method = hybr
+  tol = 0.00000003
+  max_iter = 12000
+  max_restarts = 2

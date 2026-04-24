@@ -1,0 +1,155 @@
+title: Example 6.6-8 Energy Recovery Heat Exchanger (TDPy)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 6.6-8 Energy Recovery Heat Exchanger
+#
+# Rules:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp(), etc.)
+# - No scientific notation
+# - No hyphens in report variables
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  # Inputs (unrolled)
+  T_amb = 278.15            # K   (5 C)
+  V_dot_f = 0.1179868608    # m3/s (250 cfm)
+  T_f_out = 308.15          # K   (35 C)
+  c_P = 1005.0              # J/kg-K
+  R = 287.1                 # J/kg-K
+  P_atm = 100000.0          # Pa  (100 kPa)
+
+  # Operating time (130 days/year)
+  time = 11232000.0         # s/year
+
+  # Natural gas cost: 1.55 $/therm, 1 therm = 105505585.262 J
+  # ngc = 1.55 / 105505585.262
+  ngc = 0.000000014691165364856418   # $/J
+
+  f_leak = 0.2              # fraction leaking from building
+  T_room = 293.15           # K (20 C)
+
+  UA = 300.0                # W/K
+  uac = 2.5                 # $-K/W
+  N_year = 5.0              # years
+
+  eps = 0.000000001
+
+guesses:
+  ? v_amb = 0.79856865
+  ? m_dot_f = 0.14774792474
+  ? Q_dot_f = 4454.5999309
+  ? Q_year = 50034066424.024826
+  ? Cost_year = 735.0222859
+
+  ? m_dot_exhaust = 0.11819833979
+  ? C_dot_H = 148.48666436
+  ? C_dot_C = 118.78933149
+  ? C_dot_max = 148.48666436
+  ? C_dot_min = 118.78933149
+
+  ? NTU = 2.525479319
+  ? C_R = 0.8
+  ? eff_arg = -1.2376223235
+  ? eff_hx = 0.70992690136
+
+  ? Q_dot_max = 1781.8399724
+  ? Q_dot_hx = 1264.9761303
+  ? Q_dot_HX = 1264.9761303
+
+  ? Operating_Cost_r_year = 526.29744837
+  ? HX_cost = 750.0
+  ? Operating_Cost_r = 2631.48724185
+  ? Total_Cost = 3381.48724185
+
+  ? T_exhaust = 284.63087718
+  ? T_f_in = 288.79890352
+  ? S_dot_gen_hx = 2.0754090242
+
+equations:
+  # Outdoor air properties and furnace duty
+  v_amb - (R * T_amb / P_atm) = 0.0
+  m_dot_f - (V_dot_f / v_amb) = 0.0
+  Q_dot_f - (m_dot_f * c_P * (T_f_out - T_amb)) = 0.0
+
+  # Scale the yearly energy equation to avoid large-magnitude residuals
+  (Q_year / max(eps, (Q_dot_f * time))) - 1.0 = 0.0
+
+  # Scale the cost equation to avoid large-magnitude residuals
+  (Cost_year / max(eps, (Q_year * ngc))) - 1.0 = 0.0
+
+  # Recovery HX sizing
+  m_dot_exhaust - ((1.0 - f_leak) * m_dot_f) = 0.0
+  C_dot_H - (m_dot_f * c_P) = 0.0
+  C_dot_C - (m_dot_exhaust * c_P) = 0.0
+
+  # For this case C_dot_H >= C_dot_C, so max/min are deterministic
+  C_dot_max - C_dot_H = 0.0
+  C_dot_min - C_dot_C = 0.0
+
+  NTU - (UA / C_dot_min) = 0.0
+  C_R - (C_dot_min / C_dot_max) = 0.0
+
+  eff_arg - ((NTU ** 0.22) * (exp(-C_R * (NTU ** 0.78)) - 1.0) / C_R) = 0.0
+  eff_hx - (1.0 - exp(eff_arg)) = 0.0
+
+  Q_dot_max - (C_dot_min * (T_room - T_amb)) = 0.0
+  Q_dot_hx - (eff_hx * Q_dot_max) = 0.0
+  Q_dot_HX - Q_dot_hx = 0.0
+
+  # Economics
+  Operating_Cost_r_year - (Cost_year - Q_dot_hx * time * ngc) = 0.0
+  HX_cost - (uac * UA) = 0.0
+  Operating_Cost_r - (N_year * Operating_Cost_r_year) = 0.0
+  Total_Cost - (Operating_Cost_r + HX_cost) = 0.0
+
+  # Temperatures out of the recovery HX and entropy generation
+  T_exhaust - (T_room - Q_dot_HX / C_dot_H) = 0.0
+  T_f_in - (T_amb + Q_dot_HX / C_dot_C) = 0.0
+  S_dot_gen_hx - (m_dot_f * c_P * ln(T_f_in / T_amb) + m_dot_exhaust * c_P * ln(T_exhaust / T_room)) = 0.0
+
+report:
+  T_amb
+  V_dot_f
+  T_f_out
+  P_atm
+  c_P
+  R
+  time
+  ngc
+  f_leak
+  T_room
+  UA
+  uac
+  N_year
+
+  v_amb
+  m_dot_f
+  m_dot_exhaust
+  C_dot_H
+  C_dot_C
+  C_dot_min
+  C_dot_max
+  NTU
+  C_R
+  eff_hx
+
+  Q_dot_f
+  Q_dot_max
+  Q_dot_hx
+  Q_year
+  Cost_year
+  Operating_Cost_r_year
+  HX_cost
+  Operating_Cost_r
+  Total_Cost
+
+  T_f_in
+  T_exhaust
+  S_dot_gen_hx

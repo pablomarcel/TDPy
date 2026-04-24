@@ -1,0 +1,144 @@
+title: Example 6.6-7 Argon Refrigeration Cycle (TDPy)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 6.6-7 Argon Refrigeration Cycle
+#
+# Rules satisfied:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp(), duplicate(), etc.)
+# - No scientific notation
+# - No hyphens in report variables
+# - Uses PropsSI (CoolProp) for Argon properties
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  # inputs
+  T_load = 150.0
+  P_high = 6500000.0
+  T_in = 293.15
+  P_low = 100000.0
+  m_dot = 0.01
+  DT = 10.0
+
+  # numeric guard
+  eps = 0.000000001
+
+guesses:
+  # states (rough initial guesses)
+  ? h1 = 200000.0
+  ? s1 = 4000.0
+
+  ? h4 = 120000.0
+  ? s4 = 3000.0
+
+  ? h5 = 170000.0
+  ? s5 = 3500.0
+
+  ? Q_dot = 500.0
+  ? h2 = 150000.0
+  ? T2 = 250.0
+  ? s2 = 3500.0
+
+  ? h3 = 150000.0
+  ? T3 = 180.0
+  ? s3 = 3800.0
+
+  ? Q_dot_load = 200.0
+  ? h_in_low = 200000.0
+  ? Q_dot_max = 500.0
+  ? eff_hx = 0.5
+
+  ? S_dot_gen_hx = 0.01
+  ? S_dot_gen_v = 0.01
+  ? S_dot_gen_load = 0.01
+
+equations:
+  # -----------------------
+  # State 1 (high pressure)
+  # -----------------------
+  P1 = P_high
+  T1 = T_in
+  h1 = PropsSI("HMASS","T",T1,"P",P1,"Argon")
+  s1 = PropsSI("SMASS","T",T1,"P",P1,"Argon")
+
+  # -----------------------
+  # State 5 (low pressure, warm end of HX)
+  # -----------------------
+  T5 = T1 - DT
+  P5 = P_low
+  h5 = PropsSI("HMASS","T",T5,"P",P5,"Argon")
+  s5 = PropsSI("SMASS","T",T5,"P",P5,"Argon")
+
+  # -----------------------
+  # State 4 (load outlet / cold end of HX, low pressure)
+  # -----------------------
+  T4 = T_load
+  P4 = P_low
+  h4 = PropsSI("HMASS","T",T4,"P",P4,"Argon")
+  s4 = PropsSI("SMASS","T",T4,"P",P4,"Argon")
+
+  # -----------------------
+  # Heat exchanger duty (cold side)
+  # -----------------------
+  Q_dot = m_dot * (h5 - h4)
+
+  # Heat exchanger duty (hot side) defines state 2 enthalpy
+  Q_dot = m_dot * (h1 - h2)
+
+  # -----------------------
+  # State 2 (high pressure, after HX)
+  # -----------------------
+  P2 = P_high
+  T2 = PropsSI("T","P",P2,"HMASS",h2,"Argon")
+  s2 = PropsSI("SMASS","P",P2,"HMASS",h2,"Argon")
+
+  # -----------------------
+  # Valve (state 2 -> state 3)
+  # -----------------------
+  h3 = h2
+  P3 = P_low
+  T3 = PropsSI("T","P",P3,"HMASS",h3,"Argon")
+  s3 = PropsSI("SMASS","P",P3,"HMASS",h3,"Argon")
+
+  # -----------------------
+  # Refrigeration load
+  # -----------------------
+  Q_dot_load = m_dot * (h4 - h3)
+
+  # -----------------------
+  # Maximum possible HX duty and effectiveness
+  # -----------------------
+  h_in_low = PropsSI("HMASS","P",P_low,"T",T_in,"Argon")
+  Q_dot_max = m_dot * (h_in_low - h4)
+  eff_hx = Q_dot / max(eps, Q_dot_max)
+
+  # -----------------------
+  # Entropy generation rates
+  # -----------------------
+  S_dot_gen_hx = m_dot * (s2 + s5 - s1 - s4)
+  S_dot_gen_v = m_dot * (s3 - s2)
+  S_dot_gen_load = m_dot * (s4 - s3) - Q_dot_load / T_load
+
+report:
+  T_load, DT
+  P_high, P_low
+  T_in
+  m_dot
+  P1, T1, h1, s1
+  P2, T2, h2, s2
+  P3, T3, h3, s3
+  P4, T4, h4, s4
+  P5, T5, h5, s5
+  Q_dot
+  Q_dot_load
+  Q_dot_max
+  eff_hx
+  S_dot_gen_hx
+  S_dot_gen_v
+  S_dot_gen_load

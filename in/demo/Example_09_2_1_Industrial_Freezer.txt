@@ -1,0 +1,150 @@
+title: Klein & Nellis Example 9.2-1 — Industrial Freezer (Ammonia cycle) — TDPy
+
+given:
+  # --- universal ---
+  R_u = 8314.462618                 # J/(kmol*K)
+  atm_to_Pa = 101325.0              # Pa/atm
+  ton_W = 3516.852842               # W per refrigeration ton
+
+  # --- refrigerant ---
+  fluid = Ammonia
+  MW = 17.03052                     # kg/kmol (NH3)
+  R = R_u/MW                         # J/(kg*K)
+
+  # --- inputs (unrolled unit conversions) ---
+  # temperatures
+  T_C = 249.816666666667                  # K  (-10 F)
+  DT_evap = 2.777777777778          # K  (5 F delta)
+  DT_sh   = 2.222222222222            # K  (4 F delta)
+
+  T_H = 298.705555555556                  # K  (78 F)
+  DT_cond = 5.555555555556          # K  (10 F delta)
+  DT_sc   = 2.222222222222            # K  (4 F delta)
+
+  # compressor
+  eta_c = 0.78                      # compressor isentropic efficiency
+  eta_vol = 0.75                    # volumetric efficiency
+  V_dot_disp = 0.016518160512     # m^3/s  (35 cfm)
+
+equations:
+  # ---------------- State 4 (condenser exit, subcooled) ----------------
+  T4 = T_H + DT_cond
+  T_cond = T4 + DT_sc
+  P4 = PropsSI("P","T",T_cond,"Q",0,fluid)
+  s4 = PropsSI("SMASS","T",T4,"P",P4,fluid)
+  h4 = PropsSI("HMASS","T",T4,"P",P4,fluid)
+
+  # ---------------- State 2 (evaporator exit, superheated) ----------------
+  T2 = T_C - DT_evap
+  T_evap = T2 - DT_sh
+  P2 = PropsSI("P","T",T_evap,"Q",0,fluid)
+  s2 = PropsSI("SMASS","T",T2,"P",P2,fluid)
+  h2 = PropsSI("HMASS","T",T2,"P",P2,fluid)
+  rho2 = PropsSI("D","T",T2,"P",P2,fluid)
+  v2 = 1.0/rho2
+
+  # ---------------- State 3 (compressor discharge) ----------------
+  P3 = P4
+  h_s3 = PropsSI("HMASS","P",P3,"SMASS",s2,fluid)
+  w_s_per_kg = h_s3 - h2
+  w_c_per_kg = w_s_per_kg/eta_c
+  h3 = h2 + w_c_per_kg
+  s3 = PropsSI("SMASS","P",P3,"HMASS",h3,fluid)
+  T3 = PropsSI("T","P",P3,"HMASS",h3,fluid)
+
+  # ---------------- State 1 (valve exit, throttling) ----------------
+  P1 = P2
+  h1 = h4
+  s1 = PropsSI("SMASS","P",P1,"HMASS",h1,fluid)
+  T1 = PropsSI("T","P",P1,"HMASS",h1,fluid)
+
+  # ---------------- Performance ----------------
+  m_dot = V_dot_disp*eta_vol/v2
+  W_dot_c = m_dot*(h3 - h2)
+  Q_dot_evap = m_dot*(h2 - h1)
+  Q_dot_cond = m_dot*(h3 - h4)
+  COP = Q_dot_evap/W_dot_c
+
+  # convenient outputs
+  W_dot_c_kW = W_dot_c/1000.0
+  Q_dot_evap_kW = Q_dot_evap/1000.0
+  Q_dot_cond_kW = Q_dot_cond/1000.0
+  Q_dot_evap_ton = Q_dot_evap/ton_W
+
+  # temperatures in C (for reporting)
+  T1_C = T1 - 273.15
+  T2_C = T2 - 273.15
+  T3_C = T3 - 273.15
+  T4_C = T4 - 273.15
+  T_evap_C = T_evap - 273.15
+  T_cond_C = T_cond - 273.15
+
+guesses:
+  # pressures (Pa)
+  ? P2 = 2.0e5
+  ? P4 = 1.0e6
+  ? P1 = 2.0e5
+  ? P3 = 1.0e6
+
+  # temperatures (K)
+  ? T1 = 260.0
+  ? T2 = 245.0
+  ? T3 = 330.0
+  ? T4 = 310.0
+
+  # state properties
+  ? h1 = 3.0e5
+  ? h2 = 1.4e6
+  ? h3 = 1.7e6
+  ? h4 = 3.0e5
+  ? s1 = 1000.0
+  ? s2 = 5500.0
+  ? s3 = 5600.0
+  ? s4 = 1500.0
+  ? v2 = 0.6
+  ? rho2 = 2.0
+
+  # performance
+  ? m_dot = 0.02
+  ? W_dot_c = 2.0e4
+  ? Q_dot_evap = 5.0e4
+  ? Q_dot_cond = 7.0e4
+  ? COP = 2.5
+
+report:
+  # inputs
+  fluid
+  T_C, DT_evap, DT_sh
+  T_H, DT_cond, DT_sc
+  eta_c, V_dot_disp, eta_vol
+
+  # key state conditions
+  T_evap, T_evap_C, P2
+  T_cond, T_cond_C, P4
+
+  # state 1
+  T1, T1_C, P1, h1, s1
+
+  # state 2
+  T2, T2_C, h2, s2, v2
+
+  # state 3
+  T3, T3_C, P3, h3, s3, h_s3
+
+  # state 4
+  T4, T4_C, h4, s4
+
+  # performance
+  m_dot
+  W_dot_c_kW
+  Q_dot_evap_kW
+  Q_dot_evap_ton
+  Q_dot_cond_kW
+  COP
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 600
+  max_restarts = 2

@@ -1,0 +1,92 @@
+title: Example 6.5-1 Air Heating System (TDPy, Air via PropsSI)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 6.5-1 Air Heating System
+#
+# Rules satisfied:
+# - inline equations (no procedures)
+# - primitives unrolled (no convert(), converttemp(), etc.)
+# - no scientific notation
+# - report variables contain no hyphens
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  # inputs
+  V_dot_in = 0.27            # m^3/s
+  T_in = 288.15              # K (15 C)
+  T_out = 308.15             # K (35 C)
+  i = 15.0                   # A
+  R = 30.0                   # ohm
+  T_htr = 319.15             # K (46 C)
+  T_sur = 288.15             # K (15 C)
+
+  # ambient pressure (Po# in EES)
+  P0 = 101325.0              # Pa
+
+  # working fluid
+  fluid = 'Air'
+
+guesses:
+  ? v_in = 0.82
+  ? h_in = 290000.0
+  ? s_in = 6800.0
+
+  ? m_dot = 0.33
+  ? W_dot_htr = 6750.0
+
+  ? h_out = 310000.0
+  ? s_out = 6860.0
+
+  ? Q_dot_duct = 100.0
+  ? Q_dot_htr = 6750.0
+
+  ? S_dot_gen_htr = 21.0
+  ? S_dot_gen_duct = 0.5
+  ? S_dot_gen_total_check = 21.5
+  ? S_dot_gen_total = 21.5
+
+equations:
+  # inlet properties
+  rho_in = PropsSI("DMASS","T",T_in,"P",P0,fluid)
+  v_in = 1.0 / rho_in
+  h_in = PropsSI("HMASS","T",T_in,"P",P0,fluid)
+  s_in = PropsSI("SMASS","T",T_in,"P",P0,fluid)
+
+  # mass flow and electrical work
+  m_dot = V_dot_in / v_in
+  W_dot_htr = i * i * R
+
+  # outlet properties
+  h_out = PropsSI("HMASS","T",T_out,"P",P0,fluid)
+  s_out = PropsSI("SMASS","T",T_out,"P",P0,fluid)
+
+  # energy balance on duct (air stream + heater + losses)
+  m_dot * h_in + W_dot_htr = m_dot * h_out + Q_dot_duct
+
+  # heater (all electrical work becomes heat transfer to air)
+  Q_dot_htr = W_dot_htr
+  S_dot_gen_htr = Q_dot_htr / T_htr
+
+  # entropy balance on duct excluding heater
+  m_dot * s_in + Q_dot_htr / T_htr + S_dot_gen_duct = m_dot * s_out + Q_dot_duct / T_sur
+
+  # totals and check
+  S_dot_gen_total_check = S_dot_gen_duct + S_dot_gen_htr
+  m_dot * s_in + S_dot_gen_total = m_dot * s_out + Q_dot_duct / T_sur
+
+report:
+  V_dot_in, T_in, T_out, P0
+  i, R, W_dot_htr
+  T_htr, T_sur
+  v_in, m_dot
+  h_in, s_in
+  h_out, s_out
+  Q_dot_htr, Q_dot_duct
+  S_dot_gen_htr, S_dot_gen_duct
+  S_dot_gen_total, S_dot_gen_total_check

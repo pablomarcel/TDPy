@@ -1,0 +1,254 @@
+title: NOT SOLVED --- Klein & Nellis Example 9.2-5 — Cascade Cycle for a Blast Freezer — optimize T_int to minimize TotalC — TDPy
+
+given:
+  # ---------------------------------------------------------------------------
+  # Notes / rules:
+  # - No scientific notation (no 1e6, etc.)
+  # - No EES primitives like convert()/converttemp(); everything is unrolled
+  # - Use CoolProp PropsSI for all thermo
+  #
+  # This file is written to be *optimizer-friendly*:
+  # - Avoids fragile inverse calls in the 2-phase region (no (H,T)->P, etc.)
+  # - Avoids using unknown entropies as inputs to PropsSI unless they come
+  #   directly from (T,Q) saturated states.
+  # ---------------------------------------------------------------------------
+
+  # --- Inputs (unrolled) ---
+  # Outdoor air temperature: 90°F -> K
+  T_H = 305.3722222222222
+
+  # Freezer air temperature: -50°F -> K
+  T_C_F = -50.0
+  T_C = 227.59444444444443
+
+  # Approach temperature differences
+  DT_cond = 4.0        # K
+  DT_evap = 5.0        # K
+  DT_CHX  = 6.0        # K
+
+  # Compressor isentropic efficiency
+  eta_c = 0.72
+
+  # Refrigeration load: 1.5 ton -> W
+  ton_to_W = 3516.8528420667
+  Q_dot_evap = 5275.27926310005
+
+  # Electricity cost: 0.12 $/kW-hr -> $/J
+  # 1 kW-hr = 3,600,000 J
+  ec = 0.00000003333333333333333
+
+  # Operating time: 5 year -> s (EES uses 365.25 d/yr)
+  time = 157788000.0
+
+  # Compressor cost coefficient ($-s/m^3)
+  cc = 495000.0
+
+  # Conversion used in book: (J/m^3) -> (ton/cfm)
+  # (carried over from earlier work; keep explicit, no scientific notation)
+  Jm3_to_tonpcfm = 0.0000001341959618994627
+
+  # Small epsilon to avoid divide-by-zero
+  EPS = 0.000000001
+
+  # --- Helpful fixed temperatures (K) ---
+  # State 8 temperature (upper-stage condenser exit): T8 = T_H + DT_cond
+  T8 = 309.3722222222222
+
+  # State 2 temperature (lower-stage evaporator exit): T2 = T_C - DT_evap
+  T2 = 222.59444444444443
+
+
+# --- Optimizer intent ---
+design_vars:
+  T_int
+
+# Bounds for intermediate temperature (K)
+bounds:
+  T_int: [255.0, 285.0]
+
+# Objective: minimize total cost
+objective:
+  min TotalC
+
+
+equations:
+  # ---------------------------------------------------------------------------
+  # Temperatures that depend on T_int
+  # ---------------------------------------------------------------------------
+  T5 = T_int
+  T4 = T_int + DT_CHX
+
+  # ---------------------------------------------------------------------------
+  # Upper stage (Ammonia)
+  # ---------------------------------------------------------------------------
+  # State 8: saturated liquid at T8
+  P8 = PropsSI("P","T",T8,"Q",0,"Ammonia")
+  h8 = PropsSI("HMASS","T",T8,"Q",0,"Ammonia")
+
+  # State 5: throttle valve (h5 = h8), temperature fixed to T_int
+  h5 = h8
+
+  # Pressure at state 5 (two-phase): saturation pressure at T5
+  P5 = PropsSI("P","T",T5,"Q",0,"Ammonia")
+
+  # State 6: saturated vapor at T5 (same as T_int)
+  h6 = PropsSI("HMASS","T",T5,"Q",1,"Ammonia")
+  v6 = 1.0/PropsSI("D","T",T5,"Q",1,"Ammonia")
+
+  # 2nd-stage compressor (state 6 -> state 7 at P8)
+  s6_sat = PropsSI("SMASS","T",T5,"Q",1,"Ammonia")
+  h_s7 = PropsSI("HMASS","S",s6_sat,"P",P8,"Ammonia")
+  W_s2 = h_s7 - h6
+  W2 = W_s2/eta_c
+  h7 = h6 + W2
+
+  # ---------------------------------------------------------------------------
+  # Lower stage (CarbonDioxide)
+  # ---------------------------------------------------------------------------
+  # State 2: saturated vapor at T2
+  P2 = PropsSI("P","T",T2,"Q",1,"CarbonDioxide")
+  h2 = PropsSI("HMASS","T",T2,"Q",1,"CarbonDioxide")
+  v2 = 1.0/PropsSI("D","T",T2,"Q",1,"CarbonDioxide")
+
+  # State 4: saturated liquid at T4
+  P4 = PropsSI("P","T",T4,"Q",0,"CarbonDioxide")
+  h4 = PropsSI("HMASS","T",T4,"Q",0,"CarbonDioxide")
+
+  # Throttle 2 (state 4 -> state 1): h1 = h4 at evaporator pressure
+  h1 = h4
+
+  # 1st-stage compressor (state 2 -> state 3 at P4)
+  s2_sat = PropsSI("SMASS","T",T2,"Q",1,"CarbonDioxide")
+  h_s3 = PropsSI("HMASS","S",s2_sat,"P",P4,"CarbonDioxide")
+  W_s1 = h_s3 - h2
+  W1 = W_s1/eta_c
+  h3 = h2 + W1
+
+  # ---------------------------------------------------------------------------
+  # Cascade heat exchanger energy balance -> mass-flow ratio
+  # h5 + r_m*h3 = h6 + r_m*h4  =>  r_m = (h6 - h5)/(h3 - h4)
+  # where r_m = m_dot_evap / m_dot_cond
+  # ---------------------------------------------------------------------------
+  r_m = (h6 - h5)/((h3 - h4) + EPS)
+
+  # Power per condenser mass flow rate
+  W1_per_mdot_cond = W1*r_m
+  W2_per_mdot_cond = W2
+
+  # Refrigeration per condenser mass flow rate
+  Q_evap_per_mdot_cond = r_m*(h2 - h1)
+
+  # COP (dimensionless)
+  COP = Q_evap_per_mdot_cond/((W1_per_mdot_cond + W2_per_mdot_cond) + EPS)
+
+  # Refrigeration per unit total compressor suction volumetric flow
+  # Q_evap / Vdot_c = Q_evap_per_mdot_cond / (v6 + r_m*v2)
+  Q_evap_per_Vdot_c = Q_evap_per_mdot_cond/((v6 + r_m*v2) + EPS)
+  Q_evap_per_Vdot_c_kJm3 = Q_evap_per_Vdot_c/1000.0
+  Q_evap_per_Vdot_c_tonpcfm = Q_evap_per_Vdot_c * Jm3_to_tonpcfm
+
+  # Actual flow rates
+  m_dot_cond = Q_dot_evap/((Q_evap_per_mdot_cond) + EPS)
+  m_dot_evap = r_m*m_dot_cond
+  V_dot_c = Q_dot_evap/((Q_evap_per_Vdot_c) + EPS)
+
+  # Compressor powers (W)
+  W_dot_c_1 = m_dot_cond*W1_per_mdot_cond
+  W_dot_c_2 = m_dot_cond*W2_per_mdot_cond
+  W_dot_c = W_dot_c_1 + W_dot_c_2
+  W_dot_c_kW = W_dot_c/1000.0
+
+  # Costs
+  OC = W_dot_c*time*ec
+  CompC = V_dot_c*cc
+  TotalC = CompC + OC
+
+
+guesses:
+  # Design variable
+  ? T_int = 270.0
+
+  # Upper-stage rough guesses (Ammonia)
+  ? P8 = 1400000.0
+  ? h8 = 300000.0
+  ? h5 = 300000.0
+  ? P5 = 400000.0
+  ? h6 = 1400000.0
+  ? v6 = 0.30
+  ? s6_sat = 5500.0
+  ? h_s7 = 1600000.0
+  ? W_s2 = 200000.0
+  ? W2 = 280000.0
+  ? h7 = 1680000.0
+
+  # Lower-stage rough guesses (CarbonDioxide)
+  ? P2 = 600000.0
+  ? h2 = 400000.0
+  ? v2 = 0.08
+  ? P4 = 3500000.0
+  ? h4 = 200000.0
+  ? h1 = 200000.0
+  ? s2_sat = 1700.0
+  ? h_s3 = 450000.0
+  ? W_s1 = 50000.0
+  ? W1 = 70000.0
+  ? h3 = 470000.0
+
+  # Performance / flows
+  ? r_m = 0.60
+  ? W1_per_mdot_cond = 42000.0
+  ? W2_per_mdot_cond = 280000.0
+  ? Q_evap_per_mdot_cond = 250000.0
+  ? COP = 1.20
+
+  ? Q_evap_per_Vdot_c = 1400000.0
+  ? Q_evap_per_Vdot_c_kJm3 = 1400.0
+  ? Q_evap_per_Vdot_c_tonpcfm = 0.19
+
+  ? m_dot_cond = 0.03
+  ? m_dot_evap = 0.02
+  ? V_dot_c = 0.004
+
+  ? W_dot_c_1 = 1500.0
+  ? W_dot_c_2 = 7000.0
+  ? W_dot_c = 8500.0
+  ? W_dot_c_kW = 8.5
+
+  ? OC = 14000.0
+  ? CompC = 2000.0
+  ? TotalC = 16000.0
+
+
+report:
+  # Design variable
+  T_int
+
+  # Temperatures (K)
+  T_H, T_C
+  T2, T4, T5, T8
+
+  # Pressures (Pa)
+  P2, P4, P5, P8
+
+  # Mass-flow ratio + flows
+  r_m
+  m_dot_cond, m_dot_evap
+  V_dot_c
+
+  # Performance
+  COP
+  Q_evap_per_Vdot_c_kJm3
+  Q_evap_per_Vdot_c_tonpcfm
+
+  # Power + costs
+  Q_dot_evap
+  W_dot_c, W_dot_c_kW
+  CompC, OC, TotalC
+
+
+solve:
+  backend = scipy
+  method = SLSQP
+  tol = 0.0000000001
+  max_iter = 600
+  max_restarts = 2

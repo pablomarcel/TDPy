@@ -1,0 +1,200 @@
+title: Klein & Nellis Example 9.2-2 — Industrial Freezer Design (Ammonia) — TDPy
+
+given:
+  # ---------- inputs (from EES) ----------
+  # temperatures (F) and approach/superheat/subcool deltas (F)
+  T_C_F = -10.0                       # freezer air temperature [F]
+  DT_evap_F = 5.0                     # evaporator approach ΔT [F]
+  DT_sh_F = 4.0                       # superheat ΔT [F]
+  T_H_F = 78.0                        # outdoor air temperature [F]
+  DT_cond_F = 10.0                    # condenser approach ΔT [F]
+  DT_sc_F = 4.0                       # subcool ΔT [F]
+
+  eta_c = 0.78                        # compressor isentropic efficiency [-]
+  eta_vol = 0.75                      # compressor volumetric efficiency [-]
+
+  # required refrigeration capacity
+  Q_dot_evap_ton_req = 7.2            # tons of refrigeration
+
+  # refrigerant (CoolProp name)
+  fluid = Ammonia
+
+  # ---------- conversions (unrolled primitives) ----------
+  # F -> K: (F - 32)*5/9 + 273.15
+  T_C = (T_C_F - 32.0)*5.0/9.0 + 273.15
+  T_H = (T_H_F - 32.0)*5.0/9.0 + 273.15
+
+  # ΔF -> K: ΔF*5/9
+  DT_evap = DT_evap_F*5.0/9.0
+  DT_sh   = DT_sh_F*5.0/9.0
+  DT_cond = DT_cond_F*5.0/9.0
+  DT_sc   = DT_sc_F*5.0/9.0
+
+  # cfm -> m^3/s: 1 ft^3 = 0.028316846592 m^3; 1 min = 60 s
+  cfm_to_m3s = 0.028316846592/60.0
+
+  # tons of refrigeration -> W
+  ton_to_W = 3516.852842
+
+  # ---------- cost inputs ----------
+  Cost_c_coeff = 92000.0              # $-s/m^3  (92e3 in EES; no sci notation)
+  Cost_cond_coeff = 1.5               # $-K/W
+  Cost_evap_coeff = 1.25              # $-K/W
+
+  # electricity: 0.10 $/kW-hr = 0.10 / 3,600,000 $/J
+  ec = 0.10/3600000.0                 # $/J
+  time = 5.0*31557600.0               # s  (5 years, using 365.25 d/yr)
+
+equations:
+  # ---------- temperatures at states ----------
+  # state 4: condenser outlet (subcooled liquid)
+  T4 = T_H + DT_cond
+  T_cond = T4 + DT_sc                 # condensing temperature (sat)
+
+  # state 2: evaporator outlet / compressor inlet (superheated vapor)
+  T2 = T_C - DT_evap
+  T_evap = T2 - DT_sh                 # evaporating temperature (sat)
+
+  # ---------- pressures ----------
+  # saturation pressures at condensing/evaporating temperatures
+  P4 = PropsSI("P","T",T_cond,"Q",0,fluid)
+  P2 = PropsSI("P","T",T_evap,"Q",1,fluid)
+
+  # ---------- state 4 properties ----------
+  h4 = PropsSI("HMASS","T",T4,"P",P4,fluid)
+  s4 = PropsSI("SMASS","T",T4,"P",P4,fluid)
+
+  # ---------- state 2 properties ----------
+  h2 = PropsSI("HMASS","T",T2,"P",P2,fluid)
+  s2 = PropsSI("SMASS","T",T2,"P",P2,fluid)
+  v2 = 1.0/PropsSI("D","T",T2,"P",P2,fluid)
+
+  # ---------- state 3 (compressor discharge at condenser pressure) ----------
+  P3 = P4
+  h3s = PropsSI("HMASS","P",P3,"S",s2,fluid)              # isentropic discharge
+  w_s = h3s - h2                                           # J/kg
+  w_c = w_s/eta_c                                          # J/kg (actual)
+  h3 = h2 + w_c
+  s3 = PropsSI("SMASS","P",P3,"H",h3,fluid)
+  T3 = PropsSI("T","P",P3,"H",h3,fluid)
+
+  # ---------- state 1 (after valve, evaporator inlet) ----------
+  # NOTE: book listing for 9.2-2 shows P[1]=P[4], but physical throttling is to evaporator pressure.
+  # Use P1 = P2 (same as Example 9.2-1). If you want to match the listing literally, change to P1 = P4.
+  P1 = P2
+  h1 = h4
+  s1 = PropsSI("SMASS","P",P1,"H",h1,fluid)
+  T1 = PropsSI("T","P",P1,"H",h1,fluid)
+
+  # ---------- compressor displacement + mass flow ----------
+  V_dot_disp = V_dot_disp_cfm*cfm_to_m3s
+  m_dot = V_dot_disp*eta_vol/v2
+
+  # ---------- cycle rates ----------
+  W_dot_c = m_dot*(h3 - h2)
+  Q_dot_evap = m_dot*(h2 - h1)
+  Q_dot_cond = m_dot*(h3 - h4)
+
+  COP = Q_dot_evap/W_dot_c
+
+  # ---------- capacity constraint (design) ----------
+  Q_dot_evap_ton = Q_dot_evap/ton_to_W
+  Q_dot_evap_ton = Q_dot_evap_ton_req
+
+  # ---------- component sizing + cost ----------
+  UA_cond = Q_dot_cond/(T_cond - T_H)
+  UA_evap = Q_dot_evap/(T_C - T_evap)
+
+  Cost_c = Cost_c_coeff*V_dot_disp
+  Cost_cond = Cost_cond_coeff*UA_cond
+  Cost_evap = Cost_evap_coeff*UA_evap
+  Cost_system = Cost_c + Cost_cond + Cost_evap
+
+  Cost_operating = ec*W_dot_c*time
+  Cost_total = Cost_system + Cost_operating
+
+guesses:
+  # design variable
+  ? V_dot_disp_cfm = 60.0
+
+  # pressures (Pa)
+  ? P2 = 150000.0
+  ? P4 = 1300000.0
+
+  # temperatures (K)
+  ? T1 = 245.0
+  ? T2 = 247.0
+  ? T3 = 330.0
+  ? T4 = 304.0
+  ? T_cond = 306.0
+  ? T_evap = 245.0
+
+  # enthalpies / entropies
+  ? h1 = 200000.0
+  ? h2 = 1400000.0
+  ? h3 = 1700000.0
+  ? h3s = 1600000.0
+  ? h4 = 200000.0
+
+  ? s1 = 1000.0
+  ? s2 = 5500.0
+  ? s3 = 6000.0
+  ? s4 = 1000.0
+
+  # v2 and mass flow
+  ? v2 = 0.5
+  ? m_dot = 0.05
+
+  # rates
+  ? Q_dot_evap = 25000.0
+  ? W_dot_c = 8000.0
+  ? Q_dot_cond = 33000.0
+  ? COP = 3.0
+  ? Q_dot_evap_ton = 7.2
+
+  # UA and costs
+  ? UA_evap = 5000.0
+  ? UA_cond = 4500.0
+  ? Cost_total = 20000.0
+
+report:
+  # inputs
+  fluid
+  T_C_F, T_H_F
+  DT_evap_F, DT_sh_F, DT_cond_F, DT_sc_F
+  eta_c, eta_vol
+  Q_dot_evap_ton_req
+
+  # key states
+  T1, P1, h1, s1
+  T2, P2, h2, s2, v2
+  T3, P3, h3, s3
+  T4, P4, h4, s4
+  T_evap, T_cond
+
+  # design + performance
+  V_dot_disp_cfm
+  V_dot_disp
+  m_dot
+  Q_dot_evap
+  Q_dot_evap_ton
+  W_dot_c
+  Q_dot_cond
+  COP
+
+  # sizing + cost
+  UA_evap
+  UA_cond
+  Cost_c
+  Cost_evap
+  Cost_cond
+  Cost_system
+  Cost_operating
+  Cost_total
+
+solve:
+  backend = auto
+  method = hybr
+  tol = 0.0000000001
+  max_iter = 800
+  max_restarts = 2

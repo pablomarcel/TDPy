@@ -1,0 +1,157 @@
+title: Example 6.6-5 — Jet-Powered Wagon (ideal-gas air, constant cp) — TDPy
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 6.6-5 Jet-Powered Wagon
+#
+# Rules satisfied:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp(), duplicate(), etc.)
+# - No scientific notation
+# - Report variables contain only names (no hyphens)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 2000
+  max_restarts: 2
+
+given:
+  # ---------------- geometry / environment ----------------
+  Vol_tank = 0.02                       # m^3   (20 liter)
+  T_amb = 293.15                        # K     (20 C)
+  P_atm = 101325.0                      # Pa    (1 atm)
+
+  # ---------------- tank / nozzle pressures ----------------
+  P1_tank = 16547417.5036032            # Pa    (2400 psi)
+  P_in = 137895.14586336                # Pa    (20 psi, nozzle inlet pressure)
+  P_out = 101325.0                      # Pa    (nozzle outlet pressure)
+
+  # ---------------- nozzle / air properties ----------------
+  eta_n = 0.92
+  R_air = 287.0
+  cp_air = 1004.0
+  cv_air = 717.0
+  k_noz = 0.2858565737051793            # R_air / cp_air
+
+  D_out = 0.00508                       # m     (0.2 inch)
+  pi = 3.141592653589793
+
+  # ---------------- wagon ----------------
+  m_wagon = 90.718474                   # kg    (200 lbm)
+  ms_to_mph = 2.2369362920544
+
+  # numeric guard
+  eps = 0.000000001
+
+guesses:
+  # temperatures (K)
+  ? T_tank = 293.15
+  ? T_in = 293.15
+  ? T_s_out = 268.4191572228519
+  ? T_out = 270.6761717151199
+
+  # enthalpies (J/kg)
+  ? h_in = 294322.6
+  ? h_s_out = 269492.8303521431
+  ? h_out = 271759.2756011804
+
+  # velocities
+  ? Vel_s_out_sq = 49659.5392957138
+  ? Vel_out_sq = 45686.77615205778
+  ? Vel_out = 213.7447371948754
+
+  # nozzle area + flow
+  ? A_out = 0.000020268299163899914
+  ? v_out = 0.7672221939027293
+  ? m_dot = 0.005654842787921355
+  ? F_thrust = 1.2086222710123146
+
+  # tank states
+  ? v1_tank = 0.005095194116634607
+  ? u1_tank = 210788.55
+  ? m1_tank = 3.9252210747634714
+
+  ? v2_tank = 0.6101379156561523
+  ? u2_tank = 210788.55
+  ? m2_tank = 0.03277985469636242
+
+  ? m_out = 3.892441220067109
+
+  # time + wagon speed
+  ? time = 688.0
+  ? vel_wagon_max = 9.183
+  ? vel_wagon_max_mph = 20.54
+
+equations:
+  # ---------------- regulator + nozzle inlet ----------------
+  T_tank - T_amb = 0.0
+  T_in - T_tank = 0.0
+
+  # enthalpy at nozzle inlet (ideal gas, constant cp)
+  h_in - (cp_air * T_in) = 0.0
+
+  # reversible nozzle (isentropic, constant cp model)
+  T_s_out - (T_in * ((P_out / P_in) ** k_noz)) = 0.0
+  h_s_out - (cp_air * T_s_out) = 0.0
+
+  # reversible nozzle energy balance
+  Vel_s_out_sq - (2.0 * (h_in - h_s_out)) = 0.0
+
+  # nozzle efficiency
+  Vel_out_sq - (eta_n * Vel_s_out_sq) = 0.0
+  Vel_out - sqrt(max(eps, Vel_out_sq)) = 0.0
+
+  # actual nozzle outlet state
+  h_out - (h_in - 0.5 * Vel_out_sq) = 0.0
+  T_out - (h_out / cp_air) = 0.0
+  v_out - (R_air * T_out / P_out) = 0.0
+
+  # mass flow rate through nozzle
+  A_out - (pi * D_out * D_out / 4.0) = 0.0
+  m_dot - (A_out * Vel_out / v_out) = 0.0
+
+  # thrust
+  F_thrust - (m_dot * Vel_out) = 0.0
+
+  # ---------------- tank discharge (ideal gas, constant cv) ----------------
+  v1_tank - (R_air * T_tank / P1_tank) = 0.0
+  u1_tank - (cv_air * T_tank) = 0.0
+  m1_tank - (Vol_tank / v1_tank) = 0.0
+
+  v2_tank - (R_air * T_tank / P_in) = 0.0
+  u2_tank - (cv_air * T_tank) = 0.0
+  m2_tank - (Vol_tank / v2_tank) = 0.0
+
+  m_out - (m1_tank - m2_tank) = 0.0
+
+  # operating time
+  time - (m_out / m_dot) = 0.0
+
+  # wagon speed (impulse approximation with constant thrust)
+  vel_wagon_max - (F_thrust * time / m_wagon) = 0.0
+  vel_wagon_max_mph - (vel_wagon_max * ms_to_mph) = 0.0
+
+report:
+  Vol_tank
+  T_amb
+  P_atm
+  P1_tank
+  P_in
+  P_out
+  eta_n
+  R_air
+  cp_air
+  cv_air
+  D_out
+  m_wagon
+  T_in
+  T_s_out
+  T_out
+  Vel_out
+  m_dot
+  F_thrust
+  m_out
+  time
+  vel_wagon_max
+  vel_wagon_max_mph

@@ -1,0 +1,200 @@
+title: Klein & Nellis — Example 6.6-3 (e-f) — Intercooled Compression (2 stages) — TDPy (Air, PropsSI)
+
+# Conversion rules satisfied:
+# - inline equations (no procedures)
+# - primitives unrolled (no convert(), converttemp(), duplicate(), sum(), etc.)
+# - no scientific notation
+# - report names are plain variable names (no hyphens)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 3000
+  max_restarts: 2
+
+given:
+  fluid = 'Air'
+
+  # Inputs (unrolled)
+  P_atm = 100000.0
+  T_amb = 293.15
+  P_out = 1000000.0
+  eta_c = 0.74
+  m_dot = 0.5
+
+  # 2-stage intercooled compression
+  N_stage = 2.0
+  PR_total = 10.0
+  PR_stage = 3.1622776601683795
+  P_mid = 316227.7660168379
+
+  # helpers
+  W_to_kW = 0.001
+  f_line = 0.0
+
+guesses:
+  # stage 1
+  ? h1 = 295000.0
+  ? s1 = 6800.0
+  ? s2s_1 = 6800.0
+  ? h2s_1 = 570000.0
+  ? T2s_1 = 565.0
+  ? W_dot_s_c1 = 137000.0
+  ? W_dot_c1 = 185000.0
+  ? h2_1 = 663000.0
+  ? T2_1 = 660.0
+  ? s2_1 = 7200.0
+  ? S_dot_gen_c1 = 200.0
+
+  # intercooler 1 exit
+  ? h3 = 295000.0
+  ? s3 = 6000.0
+  ? Q_dot_ac1 = 185000.0
+  ? S_dot_gen_ac1 = 50.0
+
+  # stage 2 inlet (same as state 3)
+  ? h4 = 295000.0
+  ? s4 = 6000.0
+
+  # stage 2
+  ? s5s_2 = 6000.0
+  ? h5s_2 = 540000.0
+  ? T5s_2 = 540.0
+  ? W_dot_s_c2 = 122000.0
+  ? W_dot_c2 = 165000.0
+  ? h5_2 = 625000.0
+  ? T5_2 = 625.0
+  ? s5_2 = 6500.0
+  ? S_dot_gen_c2 = 150.0
+
+  # final aftercooler exit
+  ? h6 = 295000.0
+  ? s6 = 6000.0
+  ? Q_dot_ac2 = 165000.0
+  ? S_dot_gen_ac2 = 40.0
+
+  # totals
+  ? W_dot_c_total = 350000.0
+  ? W_dot_c_total_kW = 350.0
+  ? Q_dot_total = 350000.0
+  ? Q_dot_total_kW = 350.0
+  ? S_dot_gen_total = 440.0
+
+  # line helper
+  ? s_line = 6000.0
+  ? T_line = 293.15
+
+equations:
+  # -----------------------
+  # Stage 1 inlet (state 1)
+  # -----------------------
+  T1 = T_amb
+  P1 = P_atm
+  h1 = PropsSI("HMASS","T",T1,"P",P1,fluid)
+  s1 = PropsSI("SMASS","T",T1,"P",P1,fluid)
+
+  # ------------------------------------
+  # Stage 1 isentropic + actual (state 2)
+  # ------------------------------------
+  s2s_1 = s1
+  h2s_1 = PropsSI("HMASS","P",P_mid,"SMASS",s2s_1,fluid)
+  T2s_1 = PropsSI("T","P",P_mid,"SMASS",s2s_1,fluid)
+
+  W_dot_s_c1 = m_dot * (h2s_1 - h1)
+  W_dot_c1 = W_dot_s_c1 / eta_c
+
+  h2_1 = h1 + W_dot_c1 / m_dot
+  T2_1 = PropsSI("T","P",P_mid,"HMASS",h2_1,fluid)
+  s2_1 = PropsSI("SMASS","P",P_mid,"HMASS",h2_1,fluid)
+
+  S_dot_gen_c1 = m_dot * (s2_1 - s1)
+
+  # -----------------------------------------
+  # Intercooler 1 exit (state 3) at (T_amb,P_mid)
+  # -----------------------------------------
+  T3 = T_amb
+  P3 = P_mid
+  h3 = PropsSI("HMASS","T",T3,"P",P3,fluid)
+  s3 = PropsSI("SMASS","T",T3,"P",P3,fluid)
+
+  Q_dot_ac1 = m_dot * (h2_1 - h3)
+  S_dot_gen_ac1 = Q_dot_ac1 / T_amb + m_dot * (s3 - s2_1)
+
+  # -----------------------
+  # Stage 2 inlet (state 4)
+  # -----------------------
+  T4 = T_amb
+  P4 = P_mid
+  h4 = PropsSI("HMASS","T",T4,"P",P4,fluid)
+  s4 = PropsSI("SMASS","T",T4,"P",P4,fluid)
+
+  # ------------------------------------
+  # Stage 2 isentropic + actual (state 5)
+  # ------------------------------------
+  s5s_2 = s4
+  h5s_2 = PropsSI("HMASS","P",P_out,"SMASS",s5s_2,fluid)
+  T5s_2 = PropsSI("T","P",P_out,"SMASS",s5s_2,fluid)
+
+  W_dot_s_c2 = m_dot * (h5s_2 - h4)
+  W_dot_c2 = W_dot_s_c2 / eta_c
+
+  h5_2 = h4 + W_dot_c2 / m_dot
+  T5_2 = PropsSI("T","P",P_out,"HMASS",h5_2,fluid)
+  s5_2 = PropsSI("SMASS","P",P_out,"HMASS",h5_2,fluid)
+
+  S_dot_gen_c2 = m_dot * (s5_2 - s4)
+
+  # ------------------------------------------
+  # Final aftercooler exit (state 6) at (T_amb,P_out)
+  # ------------------------------------------
+  T6 = T_amb
+  P6 = P_out
+  h6 = PropsSI("HMASS","T",T6,"P",P6,fluid)
+  s6 = PropsSI("SMASS","T",T6,"P",P6,fluid)
+
+  Q_dot_ac2 = m_dot * (h5_2 - h6)
+  S_dot_gen_ac2 = Q_dot_ac2 / T_amb + m_dot * (s6 - s5_2)
+
+  # ------------
+  # Totals
+  # ------------
+  W_dot_c_total = W_dot_c1 + W_dot_c2
+  W_dot_c_total_kW = W_dot_c_total * W_to_kW
+
+  Q_dot_total = Q_dot_ac1 + Q_dot_ac2
+  Q_dot_total_kW = Q_dot_total * W_to_kW
+
+  S_dot_gen_total = S_dot_gen_c1 + S_dot_gen_c2 + S_dot_gen_ac1 + S_dot_gen_ac2
+
+  # ---------------------------------------------------------
+  # Optional: constant-pressure T(s) line at P_out (for plots)
+  # s_line interpolates from aftercooler exit (s6) to compressor exit (s5_2)
+  # ---------------------------------------------------------
+  s_line = s6 + f_line * (s5_2 - s6)
+  T_line = PropsSI("T","P",P_out,"SMASS",s_line,fluid)
+
+report:
+  fluid
+  P_atm, T_amb, P_out, eta_c, m_dot
+  N_stage, PR_total, PR_stage, P_mid
+  T1, P1, h1, s1
+  T2s_1, h2s_1, s2s_1
+  T2_1, h2_1, s2_1
+  W_dot_s_c1, W_dot_c1
+  S_dot_gen_c1
+  T3, P3, h3, s3
+  Q_dot_ac1
+  S_dot_gen_ac1
+  T4, P4, h4, s4
+  T5s_2, h5s_2, s5s_2
+  T5_2, h5_2, s5_2
+  W_dot_s_c2, W_dot_c2
+  S_dot_gen_c2
+  T6, P6, h6, s6
+  Q_dot_ac2
+  S_dot_gen_ac2
+  W_dot_c_total, W_dot_c_total_kW
+  Q_dot_total, Q_dot_total_kW
+  S_dot_gen_total
+  f_line, s_line, T_line

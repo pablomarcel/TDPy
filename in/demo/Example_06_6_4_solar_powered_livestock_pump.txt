@@ -1,0 +1,82 @@
+title: Example 6.6-4 — Solar Powered Livestock Pump (TDPy)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Rules satisfied:
+# - inline equations (no procedures)
+# - primitives unrolled (no convert(), converttemp(), duplicate(), etc.)
+# - no scientific notation
+# - report variables contain no hyphens
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  # Solar + efficiencies
+  SF = 225.0
+  eta_p = 0.58
+  eta_PV = 0.08
+
+  # Required water per animal: 20 gal/day -> m^3/s
+  # 1 gal = 0.003785411784 m^3, 1 day = 86400 s
+  V_dot_animal = 0.0000008762527277777778
+
+  # Unit conversions (unrolled)
+  # 1 gpm = 0.003785411784 / 60 m^3/s
+  gpm_to_m3s = 0.0000630901964
+
+  # 1 ftH2O = rho*g*h with rho=1000 kg/m^3, g=9.80665 m/s^2, h=0.3048 m
+  ftH2O_to_Pa = 2989.06692
+
+guesses:
+  # Operating point (good initial guess near intersection)
+  ? V_dot_gpm = 10.5
+
+  ? DP_pump_ftH2O = 29.4
+  ? DP_pipe_ftH2O = 29.4
+
+  ? V_dot = 0.0006627
+  ? DP_pump = 87800.0
+  ? W_dot_pump = 100.0
+
+  ? A = 5.6
+  ? N_animal = 757.0
+
+equations:
+  # Pump curve (ftH2O) as a function of flow V_dot_gpm (gpm)
+  DP_pump_ftH2O = 60.0606061 + 0.398809524 * V_dot_gpm - 0.255681818 * V_dot_gpm * V_dot_gpm - 0.00568181818 * V_dot_gpm * V_dot_gpm * V_dot_gpm
+
+  # System resistance curve (ftH2O)
+  DP_pipe_ftH2O = 20.0 + 0.085 * V_dot_gpm * V_dot_gpm
+
+  # Operating point: system head = pump head
+  DP_pipe_ftH2O - DP_pump_ftH2O = 0.0
+
+  # Convert flow to m^3/s
+  V_dot = V_dot_gpm * gpm_to_m3s
+
+  # Convert pressure rise to Pa
+  DP_pump = DP_pump_ftH2O * ftH2O_to_Pa
+
+  # Pump power
+  W_dot_pump = V_dot * DP_pump / eta_p
+
+  # PV collector area
+  SF * A * eta_PV = W_dot_pump
+
+  # Number of animals supported
+  N_animal = V_dot / V_dot_animal
+
+report:
+  SF, eta_PV, eta_p
+  V_dot_animal
+  V_dot_gpm
+  DP_pump_ftH2O, DP_pipe_ftH2O
+  V_dot
+  DP_pump
+  W_dot_pump
+  A
+  N_animal

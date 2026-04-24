@@ -1,0 +1,62 @@
+title: Example 7.2-1 Second Law Efficiency (TDPy)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# EXAMPLE 7.2-1 Second Law Efficiency
+#
+# Rules followed:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp())
+# - No scientific notation anywhere
+# - No hyphens in report variable names
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 2000
+  max_restarts: 2
+
+given:
+  # Heat transfer rates (kW -> W)
+  Q_dot_HT = 25000.0
+  Q_dot_MT = 50000.0
+
+  # Reservoir temperatures (C -> K)
+  T_HT = 1098.15
+  T_MT = 513.15
+  T_0  = 293.15
+
+  # Actual power output (kW -> W)
+  W_dot_out = 12000.0
+
+guesses:
+  ? X_dot_Q_HT   = 18326.2760096526
+  ? X_dot_Q_MT   = 21436.2272240086
+  ? eta_2        = 0.3017918647999
+  ? Q_dot_0_rev  = 35237.4967663388
+  ? W_dot_out_rev = 39762.5032336612
+  ? eta_2_check  = 0.3017918647999
+
+equations:
+  # Exergy transfer rates associated with heat transfer
+  X_dot_Q_HT - (Q_dot_HT * (1.0 - T_0 / T_HT)) = 0.0
+  X_dot_Q_MT - (Q_dot_MT * (1.0 - T_0 / T_MT)) = 0.0
+
+  # Second law efficiency
+  W_dot_out - (eta_2 * (X_dot_Q_HT + X_dot_Q_MT)) = 0.0
+
+  # Reversible reference system
+  (Q_dot_HT / T_HT) + (Q_dot_MT / T_MT) - (Q_dot_0_rev / T_0) = 0.0
+  (Q_dot_HT + Q_dot_MT) - W_dot_out_rev - Q_dot_0_rev = 0.0
+
+  # Second law efficiency check
+  W_dot_out - (eta_2_check * W_dot_out_rev) = 0.0
+
+report:
+  Q_dot_HT, Q_dot_MT
+  T_HT, T_MT, T_0
+  W_dot_out
+  X_dot_Q_HT, X_dot_Q_MT
+  eta_2
+  Q_dot_0_rev, W_dot_out_rev
+  eta_2_check

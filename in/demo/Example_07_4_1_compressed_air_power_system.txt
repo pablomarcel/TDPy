@@ -1,0 +1,130 @@
+title: Example 7.4-1 Compressed Air Power System (TDPy, PropsSI)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Rules applied:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp(), etc.)
+# - No scientific notation
+# - No hyphens in report variables
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  # ---------------- inputs (all SI, unrolled) ----------------
+  P_1 = 16547417.5036032      # Pa   (2400 psi)
+  P_t_in = 275790.29172672    # Pa   (40 psi)
+  P_0 = 101325.0              # Pa   (1 atm)
+  T_0 = 293.15                # K    (20 C)
+  Vol = 0.002                 # m^3  (2 liter)
+  eta_t = 0.75                # isentropic turbine efficiency
+
+  # unit conversion helper (J/m^3 -> W hr / liter) = divide by 3600000
+  Jm3_to_WhrpL_den = 3600000.0
+
+  # working fluid string for PropsSI
+  fluid = 'Air'
+
+guesses:
+  # state 1 (tank initial)
+  ? v_1 = 0.005
+  ? u_1 = 210000.0
+  ? s_1 = 5000.0
+  ? m_1 = 0.39
+
+  # state 2 (tank final)
+  ? v_2 = 0.30
+  ? u_2 = 210000.0
+  ? s_2 = 6500.0
+  ? m_2 = 0.01
+
+  ? m_out = 0.38
+
+  # turbine
+  ? h_t_in = 294000.0
+  ? s_t_in = 6500.0
+  ? h_s_t_out = 220000.0
+  ? W_s_t = 28000.0
+  ? W_t = 21000.0
+
+  # energy density
+  ? VED = 10000000.0
+  ? VED_WhrpL = 3.0
+
+  # dead state
+  ? v_0 = 0.83
+  ? u_0 = 210000.0
+  ? s_0 = 6500.0
+
+  # exergy in tank and max energy density
+  ? X_s_1 = 30000.0
+  ? VED_max = 15000000.0
+  ? VED_max_WhrpL = 4.0
+
+equations:
+  # =========================
+  # state 1 (tank initial)
+  # =========================
+  v_1 - (1.0 / PropsSI("DMASS","P",P_1,"T",T_0,fluid)) = 0.0
+  u_1 - PropsSI("UMASS","P",P_1,"T",T_0,fluid) = 0.0
+  s_1 - PropsSI("SMASS","P",P_1,"T",T_0,fluid) = 0.0
+  m_1 - (Vol / v_1) = 0.0
+
+  # =========================
+  # state 2 (tank final)
+  # =========================
+  v_2 - (1.0 / PropsSI("DMASS","P",P_t_in,"T",T_0,fluid)) = 0.0
+  u_2 - PropsSI("UMASS","P",P_t_in,"T",T_0,fluid) = 0.0
+  s_2 - PropsSI("SMASS","P",P_t_in,"T",T_0,fluid) = 0.0
+  m_2 - (Vol / v_2) = 0.0
+
+  # mass discharged
+  m_out - (m_1 - m_2) = 0.0
+
+  # =========================
+  # turbine (inlet at P_t_in, T_0; outlet at P_0)
+  # =========================
+  h_t_in - PropsSI("HMASS","P",P_t_in,"T",T_0,fluid) = 0.0
+  s_t_in - PropsSI("SMASS","P",P_t_in,"HMASS",h_t_in,fluid) = 0.0
+
+  h_s_t_out - PropsSI("HMASS","P",P_0,"SMASS",s_t_in,fluid) = 0.0
+
+  # reversible turbine work from energy balance
+  W_s_t - (m_out * (h_t_in - h_s_t_out)) = 0.0
+
+  # actual turbine work
+  W_t - (eta_t * W_s_t) = 0.0
+
+  # volumetric energy density of actual turbine work
+  VED - (W_t / Vol) = 0.0
+  VED_WhrpL - (VED / Jm3_to_WhrpL_den) = 0.0
+
+  # =========================
+  # dead state (environment)
+  # =========================
+  v_0 - (1.0 / PropsSI("DMASS","P",P_0,"T",T_0,fluid)) = 0.0
+  u_0 - PropsSI("UMASS","P",P_0,"T",T_0,fluid) = 0.0
+  s_0 - PropsSI("SMASS","P",P_0,"T",T_0,fluid) = 0.0
+
+  # exergy of air in tank (state 1) relative to dead state
+  X_s_1 - (m_1 * (u_1 - u_0 - T_0 * (s_1 - s_0) + P_0 * (v_1 - v_0))) = 0.0
+
+  # maximum possible volumetric energy density
+  VED_max - (X_s_1 / Vol) = 0.0
+  VED_max_WhrpL - (VED_max / Jm3_to_WhrpL_den) = 0.0
+
+report:
+  P_1, P_t_in, P_0, T_0, Vol, eta_t
+  v_1, u_1, s_1, m_1
+  v_2, u_2, s_2, m_2
+  m_out
+  h_t_in, s_t_in, h_s_t_out
+  W_s_t, W_t
+  VED, VED_WhrpL
+  v_0, u_0, s_0
+  X_s_1
+  VED_max, VED_max_WhrpL

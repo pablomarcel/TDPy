@@ -1,0 +1,245 @@
+title: Example 8.2-1 Solar Trough Power Plant (TDPy, thermo PropsSI) — improved warm-start
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# EXAMPLE 8.2-1 Solar Trough Power Plant
+#
+# Rules followed:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp(), duplicate(), etc.)
+# - No scientific notation
+# - Uses PropsSI thermo calls => solver routes to SciPy
+# - Report is a single comma-separated line (no hyphens, no brackets)
+#
+# Improvement vs prior version:
+# - Put single-variable assignments on the LEFT so warm-start can evaluate them:
+#     f2 = ...
+#     f1 = ...
+#     h1 = ...
+#   This prevents early PropsSI(P,H) calls from being evaluated with h1=1.0 (domain error),
+#   reducing thermo_penalty + "thermo_eval_errors" spam in meta.
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 8000
+  max_restarts: 2
+
+given:
+  fluid = 'Water'
+
+  # Operating conditions (SI)
+  P_b = 10000000.0          # Pa   (10 MPa)
+  T_hf_in = 723.15          # K    (450 C)
+  T_C = 303.15              # K    (30 C)
+
+  # Extraction pressures (SI) — fixed (no MinMax/optimization in this file)
+  P_ext_1 = 1100000.0       # Pa   (1.1 MPa)
+  P_ext_2 = 250000.0        # Pa   (0.25 MPa)
+  P_ext_3 = 100000.0        # Pa   (0.1 MPa)
+
+  # Performance parameters
+  eta_T_1 = 0.87
+  eta_T_2 = 0.90
+  eta_T_3 = 0.92
+  eta_T_4 = 0.93
+  eta_p_1 = 0.65
+  eta_p_2 = 0.67
+  eta_p_3 = 0.69
+
+  DT_b = 15.0               # K
+  DT_rh = 10.0              # K
+  DT_cond = 5.0             # K
+  DT_CFHW = 2.0             # K
+
+  # Solar field
+  A_collector = 4000.0      # m^2
+  q_solar_flux = 1000.0     # W/m^2
+  LC = 0.35                 # W/m^2-K
+  T_amb_env = 293.15        # K (20 C)
+
+  # Saturated liquid qualities
+  x8 = 0.0
+  x10 = 0.0
+  x13 = 0.0
+
+  # Numeric guard for division (no scientific notation)
+  eps = 0.000000001
+
+guesses:
+  # extraction fractions
+  f1 = 0.15
+  f2 = 0.09
+
+  # state 1 helpful guesses (prevents bad initial thermo calls if warm-start is off)
+  h1 = 780000.0
+  T1 = 456.0
+  s1 = 2150.0
+
+  # boiler mass flow rate (kg/s)
+  m_dot = 1.10
+
+equations:
+  # --------------------------
+  # State 2 (boiler outlet)
+  # --------------------------
+  P2 = P_b
+  T2 = T_hf_in - DT_b
+  h2 = PropsSI("HMASS","T",T2,"P",P2,fluid)
+  s2 = PropsSI("SMASS","T",T2,"P",P2,fluid)
+
+  # --------------------------
+  # State 5 (reheater outlet)
+  # --------------------------
+  P5 = P_ext_2
+  T5 = T_hf_in - DT_rh
+  h5 = PropsSI("HMASS","T",T5,"P",P5,fluid)
+  s5 = PropsSI("SMASS","T",T5,"P",P5,fluid)
+
+  # --------------------------
+  # State 8 (condenser outlet, saturated liquid)
+  # --------------------------
+  T8 = T_C + DT_cond
+  P8 = PropsSI("P","T",T8,"Q",x8,fluid)
+  h8 = PropsSI("HMASS","T",T8,"Q",x8,fluid)
+  s8 = PropsSI("SMASS","T",T8,"Q",x8,fluid)
+
+  # --------------------------
+  # State 10 (sat. liquid at P_ext_3)
+  # --------------------------
+  P10 = P_ext_3
+  T10 = PropsSI("T","P",P10,"Q",x10,fluid)
+  h10 = PropsSI("HMASS","P",P10,"Q",x10,fluid)
+  s10 = PropsSI("SMASS","P",P10,"Q",x10,fluid)
+
+  # --------------------------
+  # State 13 (sat. liquid at P_ext_1)
+  # --------------------------
+  P13 = P_ext_1
+  T13 = PropsSI("T","P",P13,"Q",x13,fluid)
+  h13 = PropsSI("HMASS","P",P13,"Q",x13,fluid)
+  s13 = PropsSI("SMASS","P",P13,"Q",x13,fluid)
+
+  # --------------------------
+  # State 12 (closed feedwater heater outlet, approach DT_CFHW)
+  # --------------------------
+  T12 = T13 - DT_CFHW
+  P12 = P_b
+  h12 = PropsSI("HMASS","T",T12,"P",P12,fluid)
+  s12 = PropsSI("SMASS","T",T12,"P",P12,fluid)
+
+  # --------------------------
+  # Turbine 1: State 2 -> State 3 (P_ext_1)
+  # --------------------------
+  P3 = P_ext_1
+  h3s = PropsSI("HMASS","P",P3,"SMASS",s2,fluid)
+  h3 = h2 - eta_T_1 * (h2 - h3s)
+  T3 = PropsSI("T","P",P3,"HMASS",h3,fluid)
+  s3 = PropsSI("SMASS","P",P3,"HMASS",h3,fluid)
+
+  # --------------------------
+  # Turbine 2: State 3 -> State 4 (P_ext_2)
+  # --------------------------
+  P4 = P_ext_2
+  h4s = PropsSI("HMASS","P",P4,"SMASS",s3,fluid)
+  h4 = h3 - eta_T_2 * (h3 - h4s)
+  T4 = PropsSI("T","P",P4,"HMASS",h4,fluid)
+  s4 = PropsSI("SMASS","P",P4,"HMASS",h4,fluid)
+
+  # --------------------------
+  # Turbine 3: State 5 -> State 6 (P_ext_3)
+  # --------------------------
+  P6 = P_ext_3
+  h6s = PropsSI("HMASS","P",P6,"SMASS",s5,fluid)
+  h6 = h5 - eta_T_3 * (h5 - h6s)
+  T6 = PropsSI("T","P",P6,"HMASS",h6,fluid)
+  s6 = PropsSI("SMASS","P",P6,"HMASS",h6,fluid)
+
+  # --------------------------
+  # Turbine 4: State 6 -> State 7 (P_cond = P8)
+  # --------------------------
+  P7 = P8
+  h7s = PropsSI("HMASS","P",P7,"SMASS",s6,fluid)
+  h7 = h6 - eta_T_4 * (h6 - h7s)
+  T7 = PropsSI("T","P",P7,"HMASS",h7,fluid)
+  s7 = PropsSI("SMASS","P",P7,"HMASS",h7,fluid)
+
+  # --------------------------
+  # Pump 1: State 8 -> State 9 (to P_ext_3)
+  # --------------------------
+  P9 = P_ext_3
+  h9s = PropsSI("HMASS","P",P9,"SMASS",s8,fluid)
+  h9 = h8 + (h9s - h8) / eta_p_1
+  T9 = PropsSI("T","P",P9,"HMASS",h9,fluid)
+  s9 = PropsSI("SMASS","P",P9,"HMASS",h9,fluid)
+
+  # --------------------------
+  # Pump 2: State 10 -> State 11 (to P_b)
+  # --------------------------
+  P11 = P_b
+  h11s = PropsSI("HMASS","P",P11,"SMASS",s10,fluid)
+  h11 = h10 + (h11s - h10) / eta_p_2
+  T11 = PropsSI("T","P",P11,"HMASS",h11,fluid)
+  s11 = PropsSI("SMASS","P",P11,"HMASS",h11,fluid)
+
+  # --------------------------
+  # Pump 3: State 13 -> State 14 (to P_b)
+  # --------------------------
+  P14 = P_b
+  h14s = PropsSI("HMASS","P",P14,"SMASS",s13,fluid)
+  h14 = h13 + (h14s - h13) / eta_p_3
+  T14 = PropsSI("T","P",P14,"HMASS",h14,fluid)
+  s14 = PropsSI("SMASS","P",P14,"HMASS",h14,fluid)
+
+  # --------------------------
+  # Extraction fractions (explicit assignments for warm-start)
+  # --------------------------
+  f2 = clamp((h10 - h9) / (h6 - h9 + eps), eps, 1.0 - eps)
+  f1 = clamp((h12 - h11) / (h3 - h11 - h13 + h12 + eps), eps, 1.0 - eps)
+
+  # --------------------------
+  # State 1 (mixer to boiler) — assignment for warm-start
+  # --------------------------
+  P1 = P_b
+  h1 = f1 * h14 + (1.0 - f1) * h12
+  T1 = PropsSI("T","P",P1,"HMASS",h1,fluid)
+  s1 = PropsSI("SMASS","P",P1,"HMASS",h1,fluid)
+
+  # --------------------------
+  # Energy balances per kg of boiler flow
+  # --------------------------
+  q_b_per_kg = h2 - h1
+  w_t1_per_kg = h2 - h3
+  w_t2_per_kg = (1.0 - f1) * (h3 - h4)
+  q_rh_per_kg = (1.0 - f1) * (h5 - h4)
+  w_t3_per_kg = (1.0 - f1) * (h5 - h6)
+  w_t4_per_kg = (1.0 - f1) * (1.0 - f2) * (h6 - h7)
+  q_cond_per_kg = (1.0 - f1) * (1.0 - f2) * (h7 - h8)
+  w_p1_per_kg = (1.0 - f1) * (1.0 - f2) * (h9 - h8)
+  w_p2_per_kg = (1.0 - f1) * (h11 - h10)
+  w_p3_per_kg = f1 * (h14 - h13)
+
+  w_net_per_kg = (w_t1_per_kg + w_t2_per_kg + w_t3_per_kg + w_t4_per_kg) - (w_p1_per_kg + w_p2_per_kg + w_p3_per_kg)
+  q_in_per_kg = q_b_per_kg + q_rh_per_kg
+
+  check_cycle = q_b_per_kg + q_rh_per_kg + w_p1_per_kg + w_p2_per_kg + w_p3_per_kg - w_t1_per_kg - w_t2_per_kg - w_t3_per_kg - w_t4_per_kg - q_cond_per_kg
+
+  eta_plant = w_net_per_kg / q_in_per_kg
+
+  # --------------------------
+  # Solar field (unrolled)
+  # --------------------------
+  Q_dot_solar = A_collector * q_solar_flux
+  Q_dot_loss = LC * A_collector * (T_hf_in - T_amb_env)
+  Q_dot_field = Q_dot_solar - Q_dot_loss
+  eta_field = Q_dot_field / Q_dot_solar
+  eta_total = eta_plant * eta_field
+
+  # Mass flow rate (boiler flow)
+  q_in_per_kg * m_dot = Q_dot_field
+
+  # Net power
+  W_dot_net = Q_dot_field * eta_plant
+  W_dot_net_alt = m_dot * w_net_per_kg
+
+report: P_b, T_hf_in, T_C, P_ext_1, P_ext_2, P_ext_3, DT_b, DT_rh, DT_cond, DT_CFHW, P8, T8, P2, T2, h2, s2, P3, T3, h3, s3, P4, T4, h4, s4, P5, T5, h5, s5, P6, T6, h6, s6, P7, T7, h7, s7, P9, h9, P10, h10, P11, h11, P12, T12, h12, P13, T13, h13, P14, h14, f1, f2, h1, T1, s1, q_b_per_kg, q_rh_per_kg, q_in_per_kg, w_net_per_kg, eta_plant, eta_total, check_cycle, A_collector, q_solar_flux, Q_dot_solar, Q_dot_loss, Q_dot_field, eta_field, m_dot, W_dot_net, W_dot_net_alt

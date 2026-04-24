@@ -1,0 +1,189 @@
+title: Example 6.6-2 — Turbine Polytropic Efficiency (2-stage, Water, PropsSI)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 6.6-2 Turbine Polytropic Efficiency
+#
+# Rules enforced:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp(), duplicate(), etc.)
+# - No scientific notation
+# - No hyphens in report variable names
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 6000
+  max_restarts: 2
+
+given:
+  fluid = 'Water'
+
+  # Inlet and outlet conditions (unrolled conversions)
+  # P_in = 4 MPa
+  P_in = 4000000.0
+  # T_in = 650 C
+  T_in = 923.15
+  # P_out = 10 kPa
+  P_out = 10000.0
+
+  eta_t = 0.84
+  m_dot = 100.0
+
+  # Number of stages (fixed to match the non-parametric part of the book example)
+  N = 2.0
+
+guesses:
+  # pressures
+  ? P1 = 4000000.0
+  ? P2 = 200000.0
+  ? P3 = 10000.0
+  ? PR = 400.0
+  ? PR_stage = 20.0
+
+  # temperatures
+  ? T1 = 923.15
+  ? T2 = 550.0
+  ? T3 = 340.0
+
+  # state properties
+  ? h1 = 3600000.0
+  ? s1 = 7200.0
+
+  ? h_s2 = 2900000.0
+  ? w_s_t1_per_kg = 700000.0
+  ? w_t1_per_kg = 600000.0
+  ? h2 = 3000000.0
+  ? s2 = 7600.0
+  ? W_dot_t1 = 60000000.0
+  ? S_dot_gen_1 = 40000.0
+
+  ? h_s3 = 2400000.0
+  ? w_s_t2_per_kg = 600000.0
+  ? w_t2_per_kg = 500000.0
+  ? h3 = 2500000.0
+  ? s3 = 8200.0
+  ? W_dot_t2 = 50000000.0
+  ? S_dot_gen_2 = 60000.0
+
+  # totals
+  ? W_dot_total = 110000000.0
+  ? h_s_out = 2300000.0
+  ? W_dot_s_total = 130000000.0
+  ? eta_total = 0.85
+
+  # single-stage comparison (same eta_t over full PR)
+  ? w_s_single_per_kg = 1300000.0
+  ? w_single_per_kg = 1100000.0
+  ? h_out_single = 2500000.0
+  ? T_out_single = 360.0
+  ? s_out_single = 8400.0
+  ? W_dot_single = 110000000.0
+
+equations:
+  # -----------------------------
+  # Stage pressures (equal PR per stage)
+  # -----------------------------
+  P1 - P_in = 0.0
+  P3 - P_out = 0.0
+
+  PR - (P1 / P3) = 0.0
+  PR_stage - (PR ** (1.0 / N)) = 0.0
+
+  P2 - (P1 / PR_stage) = 0.0
+
+  # -----------------------------
+  # Stage 1 inlet (state 1)
+  # -----------------------------
+  T1 - T_in = 0.0
+
+  h1 = PropsSI("HMASS","T",T1,"P",P1,fluid)
+  s1 = PropsSI("SMASS","T",T1,"P",P1,fluid)
+
+  # -----------------------------
+  # Stage 1 outlet (state 2) with isentropic efficiency eta_t
+  # -----------------------------
+  h_s2 = PropsSI("HMASS","P",P2,"SMASS",s1,fluid)
+
+  w_s_t1_per_kg = h1 - h_s2
+  w_t1_per_kg = eta_t * w_s_t1_per_kg
+
+  h2 = h1 - w_t1_per_kg
+  T2 = PropsSI("T","P",P2,"HMASS",h2,fluid)
+  s2 = PropsSI("SMASS","P",P2,"HMASS",h2,fluid)
+
+  W_dot_t1 = m_dot * w_t1_per_kg
+  S_dot_gen_1 = m_dot * (s2 - s1)
+
+  # -----------------------------
+  # Stage 2 outlet (state 3) with isentropic efficiency eta_t
+  # -----------------------------
+  h_s3 = PropsSI("HMASS","P",P3,"SMASS",s2,fluid)
+
+  w_s_t2_per_kg = h2 - h_s3
+  w_t2_per_kg = eta_t * w_s_t2_per_kg
+
+  h3 = h2 - w_t2_per_kg
+  T3 = PropsSI("T","P",P3,"HMASS",h3,fluid)
+  s3 = PropsSI("SMASS","P",P3,"HMASS",h3,fluid)
+
+  W_dot_t2 = m_dot * w_t2_per_kg
+  S_dot_gen_2 = m_dot * (s3 - s2)
+
+  # -----------------------------
+  # Totals and overall isentropic efficiency of the two-stage turbine
+  # -----------------------------
+  W_dot_total = W_dot_t1 + W_dot_t2
+
+  h_s_out = PropsSI("HMASS","P",P3,"SMASS",s1,fluid)
+  W_dot_s_total = m_dot * (h1 - h_s_out)
+
+  eta_total = W_dot_total / W_dot_s_total
+
+  # -----------------------------
+  # Single-stage comparison (one turbine with eta_t over full pressure ratio)
+  # -----------------------------
+  w_s_single_per_kg = h1 - h_s_out
+  w_single_per_kg = eta_t * w_s_single_per_kg
+
+  h_out_single = h1 - w_single_per_kg
+  T_out_single = PropsSI("T","P",P3,"HMASS",h_out_single,fluid)
+  s_out_single = PropsSI("SMASS","P",P3,"HMASS",h_out_single,fluid)
+
+  W_dot_single = m_dot * w_single_per_kg
+
+report:
+  fluid
+  P_in
+  T_in
+  P_out
+  eta_t
+  m_dot
+  N
+  PR
+  PR_stage
+  P1
+  P2
+  P3
+  h1
+  s1
+  h_s2
+  h2
+  T2
+  s2
+  W_dot_t1
+  S_dot_gen_1
+  h_s3
+  h3
+  T3
+  s3
+  W_dot_t2
+  S_dot_gen_2
+  W_dot_total
+  h_s_out
+  W_dot_s_total
+  eta_total
+  h_out_single
+  T_out_single
+  s_out_single
+  W_dot_single

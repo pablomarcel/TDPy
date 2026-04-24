@@ -1,0 +1,90 @@
+title: Example 6.6-1 — Turbine Isentropic Efficiency (Water, PropsSI)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 6.6-1 Turbine Isentropic Efficiency
+#
+# Rules enforced:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp(), etc.)
+# - No scientific notation
+# - No hyphens in report variable names
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  fluid = 'Water'
+
+  # Unrolled unit conversions
+  # P1 = 4 MPa
+  P1 = 4000000.0
+  # T1 = 650 C
+  T1 = 923.15
+  # P2 = 10 kPa
+  P2 = 10000.0
+
+  eta_t = 0.84
+  m_dot = 100.0
+
+guesses:
+  ? h1 = 3600000.0
+  ? s1 = 7200.0
+  ? h_s2 = 2400000.0
+  ? T_s2 = 330.0
+  ? w_s_t_per_kg = 1200000.0
+  ? W_dot_s_t = 120000000.0
+  ? w_t_per_kg = 1000000.0
+  ? W_dot_t = 100000000.0
+  ? h2 = 2600000.0
+  ? T2 = 360.0
+  ? s2 = 7600.0
+  ? S_dot_gen = 40000.0
+
+equations:
+  # Inlet properties (state 1)
+  h1 = PropsSI("HMASS","T",T1,"P",P1,fluid)
+  s1 = PropsSI("SMASS","T",T1,"P",P1,fluid)
+
+  # Isentropic (reversible) turbine exit at P2
+  h_s2 = PropsSI("HMASS","P",P2,"SMASS",s1,fluid)
+  T_s2 = PropsSI("T","P",P2,"SMASS",s1,fluid)
+
+  # Isentropic specific work and power
+  w_s_t_per_kg = h1 - h_s2
+  W_dot_s_t = m_dot * w_s_t_per_kg
+
+  # Actual turbine work using isentropic efficiency
+  w_t_per_kg = eta_t * w_s_t_per_kg
+  W_dot_t = m_dot * w_t_per_kg
+
+  # Actual exit enthalpy, temperature, entropy (state 2)
+  h2 = h1 - w_t_per_kg
+  T2 = PropsSI("T","P",P2,"HMASS",h2,fluid)
+  s2 = PropsSI("SMASS","P",P2,"HMASS",h2,fluid)
+
+  # Entropy generation rate for the actual turbine
+  S_dot_gen = m_dot * (s2 - s1)
+
+report:
+  fluid
+  P1
+  T1
+  P2
+  eta_t
+  m_dot
+  h1
+  s1
+  h_s2
+  T_s2
+  w_s_t_per_kg
+  W_dot_s_t
+  w_t_per_kg
+  W_dot_t
+  h2
+  T2
+  s2
+  S_dot_gen

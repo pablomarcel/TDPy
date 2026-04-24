@@ -1,0 +1,187 @@
+title: Klein & Nellis Example 9.4-1 (Waste-Heat Driven Absorption Cooling System) — LiBr-H2O (ASHRAE corr) + Water (CoolProp)
+
+given:
+  # -------------------- Book inputs --------------------
+  m_dot_w   = 0.5        # kg/s
+  T_w_in_C  = 12.0       # °C
+  T_w_out_C = 8.0        # °C
+  DT_evap   = 3.5        # K
+  T_amb_C   = 25.0       # °C
+  DT_cond   = 5.0        # K
+  T_gen_C   = 95.0       # °C
+  T_abs_C   = 32.0       # °C
+  eta_p     = 0.5        # -
+
+  # -------------------- Constants / fluids --------------------
+  P_atm     = 101325.0   # Pa
+  fluid_ref = "Water"
+  fluid_w   = "Water"
+
+  # -------------------- LiBr engine entrypoint --------------------
+  # Use ONLY LiBrPropsSI / LiBrH2OPropsSI in equations (safe-eval allowlist friendly).
+  # Keys follow CoolProp-style conventions: "X","H","D","T","P".
+
+guess:
+  # -------------------- Refrigerant side (reasonable initial) --------------------
+  P2 = 800.0
+  P4 = 4200.0
+
+  h2 = 2.50e6
+  h4 = 1.26e5
+  h1 = 1.26e5
+  h3 = 2.55e6
+
+  # These were defaulting to 1.0 before; give them sane seeds
+  P1 = 800.0
+  P3 = 4200.0
+
+  T1 = 280.0
+  x1 = 0.05
+
+  h_w_in     = 5.03e4
+  h_w_out    = 3.35e4
+  Q_dot_evap = 8.4e3
+
+  m_dot_r = 0.0035
+
+  # -------------------- Solution side --------------------
+  # Give pressure guesses so nothing is 1 Pa at t=0
+  P5 = 800.0
+  P6 = 4200.0
+  P7 = 4200.0
+  P8 = 800.0
+
+  x5   = 0.56
+  x7   = 0.62
+
+  h5   = -1.2e5
+  h6   = -1.2e5
+  h7   = 2.0e5
+  h8   = 2.0e5
+
+  rho5 = 1500.0
+  w_p  = 1.0
+  T6   = 305.15
+
+  m_dot_abs = 0.010
+  m_dot_gen = 0.0065
+
+  Q_dot_abs  = 2.0e4
+  Q_dot_gen  = 1.2e4
+  Q_dot_cond = 9.0e3
+  W_dot_p    = 0.1
+  COP        = 0.7
+
+equations:
+  # -------------------- Unit conversions (C -> K) --------------------
+  T_w_in  = T_w_in_C  + 273.15
+  T_w_out = T_w_out_C + 273.15
+  T_amb   = T_amb_C   + 273.15
+  T_gen   = T_gen_C   + 273.15
+  T_abs   = T_abs_C   + 273.15
+
+  # -------------------- Approach temps -> refrigerant sat temps --------------------
+  T2 = T_w_out - DT_evap
+  T4 = T_amb + DT_cond
+
+  # -------------------- Refrigerant (water) states --------------------
+  P2 = PropsSI("P","T",T2,"Q",1,fluid_ref)
+  h2 = PropsSI("H","T",T2,"Q",1,fluid_ref)
+
+  P4 = PropsSI("P","T",T4,"Q",0,fluid_ref)
+  h4 = PropsSI("H","T",T4,"Q",0,fluid_ref)
+
+  h1 = h4
+  P1 = P2
+  T1 = PropsSI("T","H",h1,"P",P1,fluid_ref)
+  x1 = PropsSI("Q","H",h1,"P",P1,fluid_ref)
+
+# State 3 (generator exit / condenser inlet) — textbook
+
+  T3 = T_gen
+  P3 = P4
+  h3 = PropsSI("H","T",T3,"P",P3,fluid_ref)
+
+
+  # -------------------- Evaporator load from chilled water --------------------
+  h_w_in  = PropsSI("H","T",T_w_in,"P",P_atm,fluid_w)
+  h_w_out = PropsSI("H","T",T_w_out,"P",P_atm,fluid_w)
+  Q_dot_evap = m_dot_w*(h_w_in - h_w_out)
+
+  Q_dot_evap = m_dot_r*(h2 - h1)
+
+  # -------------------- Solution (LiBr-H2O) --------------------
+  # Define solution pressures (keep these equalities for reporting)
+  P5 = P2
+  P6 = P3
+  P7 = P3
+  P8 = P2
+
+  T5 = T_abs
+  T7 = T_gen
+
+  # IMPORTANT: use P2/P3 directly in LiBrPropsSI calls so initial eval is sane.
+  x5   = LiBrPropsSI("X","T",T5,"P",P2)
+  h5   = LiBrPropsSI("H","T",T5,"X",x5)
+  rho5 = LiBrPropsSI("D","T",T5,"X",x5)
+
+  x7 = LiBrPropsSI("X","T",T7,"P",P3)
+  h7 = LiBrPropsSI("H","T",T7,"X",x7)
+
+  # Pump (incompressible)
+  x6 = x5
+  w_p = (P6 - P5)/(rho5*eta_p)
+  h6 = h5 + w_p
+
+  # Avoid fragile/possibly-unimplemented inversion T(H,X)
+  T6 = T5
+
+  # Throttle valve (solution): h constant
+  x8 = x7
+  h8 = h7
+
+  # -------------------- Absorber mass balances --------------------
+  m_dot_r + m_dot_gen = m_dot_abs
+  m_dot_gen*x8 = m_dot_abs*x5
+
+  # -------------------- Energy balances --------------------
+  m_dot_r*h2 + m_dot_gen*h8 = Q_dot_abs + m_dot_abs*h5
+  m_dot_abs*h6 + Q_dot_gen = m_dot_gen*h7 + m_dot_r*h3
+  Q_dot_cond = m_dot_r*(h3 - h4)
+  W_dot_p = m_dot_abs*w_p
+  COP = Q_dot_evap/Q_dot_gen
+
+report:
+  COP
+  Q_dot_evap
+  Q_dot_gen
+  Q_dot_cond
+  Q_dot_abs
+  W_dot_p
+  w_p
+  m_dot_r
+  m_dot_abs
+  m_dot_gen
+  x5
+  x7
+  T2
+  T4
+  T5
+  T7
+  P2
+  P3
+  P4
+  h1
+  h2
+  h3
+  h4
+  h5
+  h6
+  h7
+  h8
+
+solve:
+  backend = scipy
+  method  = hybr
+  tol     = 1e-9
+  max_iter = 120

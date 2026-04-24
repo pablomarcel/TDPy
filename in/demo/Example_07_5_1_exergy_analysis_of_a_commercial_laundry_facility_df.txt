@@ -1,0 +1,185 @@
+title: Example 7.5-1(d-f) — Exergy Analysis of a Commercial Laundry Facility (with Turbine + Generator) — TDPy
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 7.5-1 (d-f)
+#
+# Rules satisfied:
+# - inline equations (no procedures / functions)
+# - unrolled unit conversions (no convert(), convertTemp(), etc.)
+# - no scientific notation
+# - report uses variable names only (no hyphen bullets)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 8000
+  max_restarts: 2
+
+given:
+  fluid = "Water"
+
+  # dead state (10 C, 1 atm)
+  T0 = 283.15
+  P0 = 101325.0
+
+  # inputs
+  T1 = 283.15
+  P1 = 303975.0
+  DP_w_hx = 50000.0
+  T2 = 338.15
+
+  m_dot_w = 0.6944444444444444
+
+  eta_p = 0.45
+  eta_t = 0.72
+  eta_g = 0.92
+  eta_b = 0.88
+
+  LHV = 50000000.0
+  W_dot_e = 32000.0
+
+  P3 = 8618446.61646
+  P5 = 448159.22405592
+
+  T4 = 723.15
+
+  x6 = 0.0
+
+  DP_s_hx = 350000.0
+  DP_b = 430000.0
+
+  # cost conversions (unrolled)
+  sec_per_hr = 3600.0
+  C_elec = 0.00000004166666666666667
+  C_fuel = 0.000000012321622564073124
+
+  # numeric guard
+  eps = 0.000001
+
+  # derived pressures (unrolled)
+  P2 = P1 - DP_w_hx
+  P4 = P3 - DP_b
+  P6 = P5 - DP_s_hx
+
+equations:
+  # ------------------------------------------------------------
+  # Dead-state properties (mass basis)
+  # ------------------------------------------------------------
+  h0 = PropsSI("HMASS","T",T0,"P",P0,fluid)
+  s0 = PropsSI("SMASS","T",T0,"P",P0,fluid)
+
+  # ------------------------------------------------------------
+  # Water side of heat exchanger
+  # ------------------------------------------------------------
+  h1 = PropsSI("HMASS","T",T1,"P",P1,fluid)
+  s1 = PropsSI("SMASS","T",T1,"P",P1,fluid)
+  x_f1 = h1 - h0 - T0 * (s1 - s0)
+
+  h2 = PropsSI("HMASS","T",T2,"P",P2,fluid)
+  s2 = PropsSI("SMASS","T",T2,"P",P2,fluid)
+  x_f2 = h2 - h0 - T0 * (s2 - s0)
+
+  Q_dot_HX = m_dot_w * (h2 - h1)
+
+  # ------------------------------------------------------------
+  # Boiler exit (state 4)
+  # ------------------------------------------------------------
+  h4 = PropsSI("HMASS","T",T4,"P",P4,fluid)
+  s4 = PropsSI("SMASS","T",T4,"P",P4,fluid)
+  x_f4 = h4 - h0 - T0 * (s4 - s0)
+
+  # ------------------------------------------------------------
+  # Turbine: 4 -> 5 (to P5)
+  # ------------------------------------------------------------
+  h5s = PropsSI("HMASS","P",P5,"SMASS",s4,fluid)
+  w_s_t_per_kg = h4 - h5s
+  w_t_per_kg = eta_t * w_s_t_per_kg
+  h5 = h4 - w_t_per_kg
+
+  T5 = PropsSI("T","P",P5,"HMASS",h5,fluid)
+  s5 = PropsSI("SMASS","P",P5,"HMASS",h5,fluid)
+  x_f5 = h5 - h0 - T0 * (s5 - s0)
+
+  # ------------------------------------------------------------
+  # HX steam side outlet (state 6): saturated liquid at P6
+  # ------------------------------------------------------------
+  T6 = PropsSI("T","P",P6,"Q",x6,fluid)
+  h6 = PropsSI("HMASS","P",P6,"Q",x6,fluid)
+  s6 = PropsSI("SMASS","P",P6,"Q",x6,fluid)
+  x_f6 = h6 - h0 - T0 * (s6 - s0)
+
+  # steam-side mass flow from HX energy balance:
+  # m_dot_s * (h5 - h6) = Q_dot_HX
+  denom_hx = max(eps, (h5 - h6))
+  m_dot_s = Q_dot_HX / denom_hx
+
+  # ------------------------------------------------------------
+  # Pump: 6 -> 3 (to P3)
+  # ------------------------------------------------------------
+  h3s = PropsSI("HMASS","P",P3,"SMASS",s6,fluid)
+  h3 = h6 + (h3s - h6) / eta_p
+
+  T3 = PropsSI("T","P",P3,"HMASS",h3,fluid)
+  s3 = PropsSI("SMASS","P",P3,"HMASS",h3,fluid)
+  x_f3 = h3 - h0 - T0 * (s3 - s0)
+
+  W_dot_p = m_dot_s * (h3 - h6)
+
+  # ------------------------------------------------------------
+  # Boiler heat + fuel
+  # ------------------------------------------------------------
+  Q_dot_b = m_dot_s * (h4 - h3)
+  Q_dot_f = Q_dot_b / eta_b
+  m_dot_f = Q_dot_f / LHV
+
+  # ------------------------------------------------------------
+  # Turbine power + generator power
+  # ------------------------------------------------------------
+  W_dot_t = m_dot_s * w_t_per_kg
+  W_dot_g = W_dot_t * eta_g
+
+  # ------------------------------------------------------------
+  # Second-law efficiency (system with turbine + generator)
+  # ------------------------------------------------------------
+  denom_eta2 = m_dot_f * LHV + W_dot_p
+  denom_eta2_c = max(eps, denom_eta2)
+  eta_2 = (m_dot_w * (x_f2 - x_f1) + W_dot_g) / denom_eta2_c
+
+  # ------------------------------------------------------------
+  # Exergy destructions
+  # ------------------------------------------------------------
+  X_dot_des_b = m_dot_f * LHV + m_dot_s * x_f3 - m_dot_s * x_f4
+  X_dot_des_p = m_dot_s * x_f6 + W_dot_p - m_dot_s * x_f3
+  X_dot_des_hx = m_dot_s * x_f5 + m_dot_w * x_f1 - m_dot_s * x_f6 - m_dot_w * x_f2
+  X_dot_des_t = m_dot_s * x_f4 - W_dot_t - m_dot_s * x_f5
+
+  # ------------------------------------------------------------
+  # Operating cost
+  # ------------------------------------------------------------
+  Cost = m_dot_f * LHV * C_fuel + (W_dot_e + W_dot_p - W_dot_g) * C_elec
+  Cost_dph = Cost * sec_per_hr
+
+report:
+  T0, P0
+  T1, P1, P2
+  T2
+  P3, P4, P5, P6
+  T3, T4, T5, T6
+  eta_p, eta_t, eta_g, eta_b
+  m_dot_w, m_dot_s, m_dot_f
+  h0, s0
+  h1, s1, x_f1
+  h2, s2, x_f2
+  Q_dot_HX
+  h3, s3, x_f3
+  h4, s4, x_f4
+  h5, s5, x_f5
+  h6, s6, x_f6
+  w_s_t_per_kg, w_t_per_kg
+  W_dot_p
+  Q_dot_b, Q_dot_f
+  W_dot_t, W_dot_g
+  eta_2
+  X_dot_des_b, X_dot_des_p, X_dot_des_hx, X_dot_des_t
+  Cost, Cost_dph

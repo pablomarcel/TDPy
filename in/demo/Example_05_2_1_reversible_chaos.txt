@@ -1,0 +1,21 @@
+title: K&N 5.2-1
+
+g = 9.80665
+P_atm = 100000
+A_c = 0.18
+P_1 = 450000
+V_1 = 0.45
+
+? P_2 = 225000
+? m_p = 2300
+? W_rev = 140000
+? W_irrev = 101000
+? V_2 = 0.9
+
+V_2 - 2*V_1 = 0
+P_2*V_2 - P_1*V_1 = 0
+P_atm*A_c + m_p*g - P_2*A_c = 0
+W_rev - P_1*V_1*log(V_2/V_1) = 0
+W_irrev - (P_atm*(V_2-V_1) + m_p*g*(V_2-V_1)/A_c) = 0
+
+report: P_2, m_p, W_rev, W_irrev, V_2

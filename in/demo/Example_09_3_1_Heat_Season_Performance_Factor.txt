@@ -1,0 +1,205 @@
+title: Klein & Nellis — Example 9.3-1 — Heating Season Performance Factor (single-bin) — TDPy
+
+given:
+  # ---------------- working fluid ----------------
+  # use string literals in PropsSI calls (avoid fluid symbols)
+
+  # ---------------- unrolled primitives ----------------
+  # compressor displacement rate: 4.25 cfm -> m^3/s
+  V_dot_disp = 0.002005776633600
+
+  # clearance volume ratio
+  c = 0.025
+
+  # building + outdoor temperatures
+  T_bldg = 295.15                 # K (22 C)
+  T_amb = 268.15                  # K (-5 C)
+
+  # condenser fan + effectiveness
+  V_dot_cond_f = 2.0              # m^3/s
+  W_dot_cond_f = 250.0            # W
+  eff_cond = 0.72
+
+  # evaporator fan + effectiveness
+  V_dot_evap_f = 2.5              # m^3/s
+  W_dot_evap_f = 340.0            # W
+  eff_evap = 0.81
+
+  # building heat loss coefficient + base temperature
+  UA = 400.0                      # W/K
+  T_base = 290.65                 # K (17.5 C)
+
+  # ambient reference pressure for air properties
+  P_atm = 101325.0                # Pa
+
+equations:
+  # ---------------- unknown condensing / evaporating temperatures ----------------
+  # (guesses provided below)
+  T4 = T_cond
+  x4 = 0.0
+  P4 = PropsSI("P","T",T4,"Q",x4,"R410A")
+  h4 = PropsSI("HMASS","T",T4,"Q",x4,"R410A")
+  s4 = PropsSI("SMASS","T",T4,"Q",x4,"R410A")
+
+  T2 = T_evap
+  x2 = 1.0
+  P2 = PropsSI("P","T",T2,"Q",x2,"R410A")
+  h2 = PropsSI("HMASS","T",T2,"Q",x2,"R410A")
+  s2 = PropsSI("SMASS","T",T2,"Q",x2,"R410A")
+  rho2 = PropsSI("D","T",T2,"Q",x2,"R410A")
+  v2 = 1.0 / rho2
+
+  # ---------------- State 1: Throttle exit / evaporator inlet ----------------
+  P1 = P2
+  h1 = h4
+  T1 = PropsSI("T","P",P1,"HMASS",h1,"R410A")
+  s1 = PropsSI("SMASS","P",P1,"HMASS",h1,"R410A")
+
+  # ---------------- State 3: Compressor exit / condenser inlet ----------------
+  P3 = P4
+
+  eta_c = 0.79 - 0.0039 * (T_cond - T_evap)
+
+  s_s3 = s2
+  h_s3 = PropsSI("HMASS","P",P3,"SMASS",s_s3,"R410A")
+
+  w_s_c_per_kg = h_s3 - h2
+  w_c_per_kg = w_s_c_per_kg / eta_c
+
+  h3 = h2 + w_c_per_kg
+  s3 = PropsSI("SMASS","P",P3,"HMASS",h3,"R410A")
+  T3 = PropsSI("T","P",P3,"HMASS",h3,"R410A")
+  rho3 = PropsSI("D","P",P3,"HMASS",h3,"R410A")
+  v3 = 1.0 / rho3
+
+  # ---------------- Volumetric efficiency + mass flow ----------------
+  eta_vol = 1.0 - c * (v2 / v3 - 1.0)
+  m_dot = eta_vol * V_dot_disp / v2
+
+  W_dot_c = w_c_per_kg * m_dot
+
+  # ---------------- Condenser heat transfer (refrigerant + effectiveness) ----------------
+  Q_dot_cond = m_dot * (h3 - h4)
+
+  cp_a_cond = PropsSI("CPMASS","T",T_bldg,"P",P_atm,"Air")
+  rho_a_cond = PropsSI("D","T",T_bldg,"P",P_atm,"Air")
+  v_a_cond = 1.0 / rho_a_cond
+  m_dot_a_cond = V_dot_cond_f / v_a_cond
+
+  Q_dot_cond = eff_cond * m_dot_a_cond * cp_a_cond * (T_cond - T_bldg)
+
+  # ---------------- Evaporator heat transfer (refrigerant + effectiveness) ----------------
+  Q_dot_evap = m_dot * (h2 - h1)
+
+  cp_a_evap = PropsSI("CPMASS","T",T_amb,"P",P_atm,"Air")
+  rho_a_evap = PropsSI("D","T",T_amb,"P",P_atm,"Air")
+  v_a_evap = 1.0 / rho_a_evap
+  m_dot_a_evap = V_dot_evap_f / v_a_evap
+
+  Q_dot_evap = eff_evap * m_dot_a_evap * cp_a_evap * (T_amb - T_evap)
+
+  # ---------------- Steady-state COP (heating mode) ----------------
+  COP_ss = Q_dot_cond / (W_dot_c + W_dot_cond_f + W_dot_evap_f)
+
+  # ---------------- Building load ----------------
+  Q_dot_bldg = UA * (T_base - T_amb)
+
+  # ---------------- Unroll min/max primitives ----------------
+  ratio_load = Q_dot_bldg / Q_dot_cond
+
+  # f = min(1, ratio_load) = 0.5*(1 + ratio - |1 - ratio|)
+  f = 0.5 * (1.0 + ratio_load - abs(1.0 - ratio_load))
+
+  delta_strip = Q_dot_bldg - Q_dot_cond
+  # W_dot_strip = max(0, delta_strip) = 0.5*(delta + |delta|)
+  W_dot_strip = 0.5 * (delta_strip + abs(delta_strip))
+
+  # ---------------- Part-load factor ----------------
+  f2 = f * f
+  f3 = f2 * f
+  PLF = f / (0.01 + 1.18 * f - 0.24 * f2 + 0.05 * f3)
+
+  W_dot_c_ss = f * W_dot_c
+  W_dot_c_avg = W_dot_c_ss / PLF
+
+  W_dot_f = W_dot_cond_f + W_dot_evap_f
+  W_dot_f_avg = f * W_dot_f
+
+  W_dot_elec_avg = W_dot_c_avg + W_dot_f_avg + W_dot_strip
+  COP_avg = Q_dot_bldg / W_dot_elec_avg
+
+  # ---------------- convenient outputs ----------------
+  Q_dot_cond_kW = Q_dot_cond / 1000.0
+  Q_dot_evap_kW = Q_dot_evap / 1000.0
+  W_dot_c_kW = W_dot_c / 1000.0
+  W_dot_elec_avg_kW = W_dot_elec_avg / 1000.0
+
+guesses:
+  # guesses from EES comments
+  ? T_cond = 300.15
+  ? T_evap = 263.15
+
+  # typical magnitudes (helps solver)
+  ? P2 = 700000.0
+  ? P4 = 2500000.0
+  ? h3 = 450000.0
+  ? h_s3 = 430000.0
+  ? eta_c = 0.65
+  ? eta_vol = 0.80
+  ? m_dot = 0.05
+  ? Q_dot_cond = 12000.0
+  ? Q_dot_evap = 9000.0
+  ? W_dot_c = 2500.0
+  ? COP_ss = 3.0
+  ? f = 1.0
+  ? PLF = 0.9
+  ? W_dot_strip = 0.0
+  ? COP_avg = 2.5
+
+report:
+  # inputs
+  V_dot_disp
+  c
+  T_bldg, T_amb
+  V_dot_cond_f, W_dot_cond_f, eff_cond
+  V_dot_evap_f, W_dot_evap_f, eff_evap
+  UA, T_base
+
+  # solved temperatures
+  T_cond
+  T_evap
+
+  # refrigerant states
+  T1, P1, h1, s1
+  T2, P2, h2, s2, v2
+  T3, P3, h3, s3, v3
+  T4, P4, h4, s4
+
+  # compressor + flow
+  eta_c
+  eta_vol
+  m_dot
+  W_dot_c_kW
+
+  # heat rates
+  Q_dot_cond_kW
+  Q_dot_evap_kW
+
+  # COPs
+  COP_ss
+  COP_avg
+
+  # load + part load
+  Q_dot_bldg
+  ratio_load
+  f
+  PLF
+  W_dot_strip
+  W_dot_elec_avg_kW
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 0.0000000001
+  max_iter = 900
+  max_restarts = 2

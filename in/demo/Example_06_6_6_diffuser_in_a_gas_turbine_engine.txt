@@ -1,0 +1,106 @@
+title: Klein & Nellis — Example 6.6-6 — Diffuser in a Gas Turbine Engine (TDPy, PropsSI)
+
+# Rules followed:
+# - inline equations (no procedures)
+# - unrolled primitives (all unit conversions precomputed)
+# - no scientific notation
+# - report list uses only variable names (no hyphens)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  fluid = 'Air'
+
+  # Inputs (SI, conversions unrolled)
+  Vel1 = 134.112          # m/s  (300 mph)
+  Vel2 = 60.0             # m/s
+  T1   = 268.15           # K    (-5 C)
+  P1   = 85000.0          # Pa   (85 kPa)
+  eta_d = 0.6
+
+guesses:
+  # State 1
+  ? h1 = 270000.0
+  ? s1 = 6800.0
+  ? rho1 = 1.10
+
+  # Reversible diffuser exit (2s)
+  ? h2s = 278000.0
+  ? T2s = 275.0
+  ? P2s = 93000.0
+
+  # Actual diffuser exit (2)
+  ? P2 = 89700.0
+  ? h2 = 278000.0
+  ? s2 = 6850.0
+  ? rho2 = 1.20
+
+  # Results
+  ? Sgen = 5.0
+  ? AR = 2.05
+  ? K_P = 0.47
+
+equations:
+  # -------------------------
+  # State 1 properties
+  # -------------------------
+  h1 = PropsSI("HMASS","T",T1,"P",P1,fluid)
+  s1 = PropsSI("SMASS","T",T1,"P",P1,fluid)
+  rho1 = PropsSI("DMASS","T",T1,"P",P1,fluid)
+
+  # -------------------------
+  # Reversible diffuser (2s)
+  # Energy balance: h1 + V1^2/2 = h2s + V2^2/2
+  # -------------------------
+  h2s = h1 + (Vel1*Vel1 - Vel2*Vel2) / 2.0
+
+  # Reversible exit state satisfies: h(T2s,P2s)=h2s and s(T2s,P2s)=s1
+  h2s = PropsSI("HMASS","T",T2s,"P",P2s,fluid)
+  s1  = PropsSI("SMASS","T",T2s,"P",P2s,fluid)
+
+  # Pressure at actual diffuser exit using isentropic efficiency definition
+  P2 = P1 + eta_d * (P2s - P1)
+
+  # -------------------------
+  # Actual diffuser exit (2)
+  # (same stagnation enthalpy relation)
+  # -------------------------
+  h2 = h2s
+  s2 = PropsSI("SMASS","P",P2,"HMASS",h2,fluid)
+  rho2 = PropsSI("DMASS","P",P2,"HMASS",h2,fluid)
+
+  # Entropy generation per unit mass
+  Sgen = s2 - s1
+
+  # Area ratio: A2/A1 = (v2*V1)/(v1*V2) = (rho1/rho2)*(V1/V2)
+  AR = (rho1 / rho2) * (Vel1 / Vel2)
+
+  # Pressure recovery coefficient
+  # K_P = (P2-P1) / (Vel1^2/(2*v1)) with v1=1/rho1 => Vel1^2/(2*v1)=0.5*Vel1^2*rho1
+  K_P = (P2 - P1) / (0.5 * Vel1 * Vel1 * rho1)
+
+report:
+  fluid
+  Vel1
+  Vel2
+  T1
+  P1
+  eta_d
+  h1
+  s1
+  rho1
+  h2s
+  T2s
+  P2s
+  P2
+  h2
+  s2
+  rho2
+  Sgen
+  AR
+  K_P

@@ -1,0 +1,228 @@
+title: Example 8.3-2 — Gas Turbine Engine for Ship Propulsion (TDPy, thermo PropsSI)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 8.3-2 Gas Turbine Engine for Ship Propulsion
+#
+# Conversion rules:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp(), duplicate(), etc.)
+# - No scientific notation
+# - Uses PropsSI thermo calls => force SciPy (never GEKKO)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 6000
+  max_restarts: 2
+
+given:
+  # Inputs (SI)
+  T_amb = 298.15                  # K   (25 C)
+  P_atm = 101325.0                # Pa  (1 atm)
+  T_t_in = 1293.15                # K   (1020 C)
+  PR = 3.5                        # compressor pressure ratio
+  HC = 48000000.0                 # J/kg
+  W_dot_pt = 238623.95890632647   # W  (320 hp)
+
+  # Performance parameters
+  eta_c  = 0.82
+  eta_gt = 0.85
+  eta_pt = 0.81
+  DT_rec = 50.0                   # K
+
+  # Mission
+  time = 864000.0                 # s (10 days)
+  sec_per_hr = 3600.0
+
+  # Numeric guards
+  eps = 0.000000001
+
+guesses:
+  # Key unknowns
+  P5   = 227981.25                # Pa  gasifier turbine exit pressure
+  AF_h = 75.0                     # heater air-fuel ratio
+  AF_rh = 75.0                    # reheater air-fuel ratio
+  m_dot = 1.5                     # kg/s air flow
+
+equations:
+  # --------------------------
+  # State 1 (compressor inlet)
+  # --------------------------
+  T1 = T_amb
+  P1 = P_atm
+  h1 = PropsSI("HMASS","T",T1,"P",P1,"Air")
+  s1 = PropsSI("SMASS","T",T1,"P",P1,"Air")
+
+  # --------------------------
+  # State 2 (compressor exit)
+  # --------------------------
+  P2 = PR * P1
+  h2s = PropsSI("HMASS","P",P2,"SMASS",s1,"Air")
+  w_s_c_per_kg = h2s - h1
+  w_c_per_kg = w_s_c_per_kg / eta_c
+  h2 = h1 + w_c_per_kg
+  T2 = PropsSI("T","P",P2,"HMASS",h2,"Air")
+  s2 = PropsSI("SMASS","P",P2,"HMASS",h2,"Air")
+
+  # -----------------------------------------
+  # State 4 (heater exit / gasifier turbine in)
+  # -----------------------------------------
+  T4 = T_t_in
+  P4 = P2
+  h4 = PropsSI("HMASS","T",T4,"P",P4,"Air")
+  s4 = PropsSI("SMASS","T",T4,"P",P4,"Air")
+
+  # -----------------------------------------
+  # Gasifier turbine exit pressure P5 + heater AFR AF_h coupling
+  # -----------------------------------------
+  h5s = PropsSI("HMASS","P",P5,"SMASS",s4,"Air")
+
+  mu_h = 1.0 + 1.0 / AF_h
+
+  w_s_gt_per_kg = (h4 - h5s) * mu_h
+
+  # Actual turbine must drive compressor
+  eta_gt * w_s_gt_per_kg = w_c_per_kg
+
+  h5 = h4 - w_c_per_kg / mu_h
+
+  T5 = PropsSI("T","P",P5,"HMASS",h5,"Air")
+  s5 = PropsSI("SMASS","P",P5,"HMASS",h5,"Air")
+
+  # -----------------------------------------
+  # Reheater + power turbine inlet (state 6)
+  # -----------------------------------------
+  T6 = T_t_in
+  P6 = P5
+  h6 = PropsSI("HMASS","T",T6,"P",P6,"Air")
+  s6 = PropsSI("SMASS","T",T6,"P",P6,"Air")
+
+  # AF_rh from reheater energy balance
+  AF_rh = (HC - h6) / ((h6 - h5) * mu_h)
+
+  mu = 1.0 + 1.0 / AF_h + 1.0 / AF_rh
+
+  # -----------------------------------------
+  # Power turbine exit (state 7)
+  # -----------------------------------------
+  P7 = P_atm
+  h7s = PropsSI("HMASS","P",P7,"SMASS",s6,"Air")
+
+  w_s_pt_per_kg = (h6 - h7s) * mu
+  w_pt_per_kg = eta_pt * w_s_pt_per_kg
+
+  h7 = h6 - w_pt_per_kg / mu
+  T7 = PropsSI("T","P",P7,"HMASS",h7,"Air")
+  s7 = PropsSI("SMASS","P",P7,"HMASS",h7,"Air")
+
+  # -----------------------------------------
+  # Recuperator hot-side exit / heater inlet (state 3)
+  # -----------------------------------------
+  T3 = T7 - DT_rec
+  P3 = P2
+  h3 = PropsSI("HMASS","T",T3,"P",P3,"Air")
+  s3 = PropsSI("SMASS","T",T3,"P",P3,"Air")
+
+  # AF_h from heater energy balance
+  AF_h = (h4 - HC) / (h3 - h4)
+
+  # -----------------------------------------
+  # Recuperator cold-side exit / exhaust outlet (state 8)
+  # -----------------------------------------
+  h8 = (h2 + mu * h7 - h3) / mu
+  P8 = P7
+  T8 = PropsSI("T","P",P8,"HMASS",h8,"Air")
+  s8 = PropsSI("SMASS","P",P8,"HMASS",h8,"Air")
+
+  # -----------------------------------------
+  # Power / flow rates
+  # -----------------------------------------
+  m_dot = W_dot_pt / w_pt_per_kg
+
+  m_dot_f_h = m_dot / AF_h
+  m_dot_f_rh = m_dot / AF_rh
+  m_dot_f = m_dot_f_h + m_dot_f_rh
+
+  m_dot_f_kgphr = m_dot_f * sec_per_hr
+  m_f = m_dot_f * time
+
+  # -----------------------------------------
+  # Checks / efficiency
+  # -----------------------------------------
+  check_1_per_kg = h1 + HC / AF_h + HC / AF_rh - w_pt_per_kg - mu * h8
+  eta = w_pt_per_kg / (HC / AF_h + HC / AF_rh)
+
+  # -----------------------------------------
+  # Recuperator performance + sizing
+  # -----------------------------------------
+  Q_dot_rec_per_kg = h3 - h2
+
+  h3_max = PropsSI("HMASS","T",T7,"P",P3,"Air")
+  Q_dot_rec_max_per_kg = h3_max - h2
+
+  eff_rec = Q_dot_rec_per_kg / Q_dot_rec_max_per_kg
+  eff_rec_c = clamp(eff_rec, eps, 1.0 - eps)
+
+  C_r = 1.0 / mu
+  denom_ntu = max(eps, 1.0 - C_r)
+
+  ratio_arg = (1.0 - eff_rec_c * C_r) / (1.0 - eff_rec_c)
+  ratio_arg_c = max(eps, ratio_arg)
+
+  NTU_rec = ln(ratio_arg_c) / denom_ntu
+
+  T_avg = (T2 + T3) / 2.0
+  cp_avg = PropsSI("CPMASS","T",T_avg,"P",P3,"Air")
+
+  UA_rec = NTU_rec * m_dot * cp_avg
+  m_rec = 0.05 * UA_rec
+  m_total = m_rec + m_f
+
+report:
+  T_amb
+  P_atm
+  T_t_in
+  PR
+  HC
+  W_dot_pt
+  eta_c
+  eta_gt
+  eta_pt
+  DT_rec
+  T1
+  P1
+  P2
+  T2
+  h2
+  P3
+  T3
+  h3
+  P4
+  h4
+  P5
+  T5
+  h5
+  T6
+  h6
+  T7
+  h7
+  T8
+  h8
+  AF_h
+  AF_rh
+  mu
+  w_c_per_kg
+  w_s_gt_per_kg
+  w_pt_per_kg
+  m_dot
+  m_dot_f
+  m_dot_f_kgphr
+  m_f
+  eta
+  check_1_per_kg
+  eff_rec
+  NTU_rec
+  UA_rec
+  m_rec
+  m_total

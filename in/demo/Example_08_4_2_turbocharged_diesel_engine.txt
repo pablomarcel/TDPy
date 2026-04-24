@@ -1,0 +1,215 @@
+title: Klein & Nellis — Example 8.4-2 — Turbocharged Diesel Engine (ideal-gas air) — FORCE SciPy
+
+given:
+  # ---------------- diesel engine ----------------
+  N_cyl = 4.0
+  bore = 0.103                 # m (103 mm)
+  stroke = 0.132               # m (132 mm)
+  CR = 17.5
+  N = 50.0                     # 1/s
+  HC = 45000000.0              # J/kg
+  AF = 17.0
+
+  # ---------------- turbocharger / aftercooler ----------------
+  PR = 3.2
+  eta_c = 0.76
+  eta_t = 0.78
+  DT_ac = 10.0                 # K
+
+  # ---------------- ambient ----------------
+  T_amb = 293.15               # K
+  P_amb = 101325.0             # Pa
+
+  # ---------------- ideal-gas air model ----------------
+  R_air = 287.058              # J/kg-K
+  gamma = 1.4
+
+  # ---------------- constants ----------------
+  pi = 3.141592653589793
+  W_to_hp = 0.00134102209
+  W_to_kW = 0.001
+
+equations:
+  # ---------------- geometry ----------------
+  Vol_dis_cyl = pi * bore * bore * stroke / 4.0
+  Vol_cl = Vol_dis_cyl / (CR - 1.0)
+  Vol_BDC = Vol_dis_cyl + Vol_cl
+  Vol_TDC = Vol_cl
+
+  # ---------------- constant-property ideal gas ----------------
+  cv = R_air / (gamma - 1.0)
+  cp = gamma * R_air / (gamma - 1.0)
+
+  # =========================
+  # Compressor (ambient -> boosted)
+  # =========================
+  P_c_in = P_amb
+  T_c_in = T_amb
+
+  P_c_out = P_c_in * PR
+  T_s_c_out = T_c_in * (PR ** ((gamma - 1.0) / gamma))
+  w_s_c_per_kg = cp * (T_s_c_out - T_c_in)
+  w_c_per_kg = w_s_c_per_kg / eta_c
+  T_c_out = T_c_in + w_c_per_kg / cp
+
+  # aftercooler outlet
+  P_ac_out = P_c_out
+  T_ac_out = T_amb + DT_ac
+
+  # =========================
+  # Cylinder State 1 (BDC, aftercooler outlet)
+  # =========================
+  T1 = T_ac_out
+  P1 = P_ac_out
+  v1 = R_air * T1 / P1
+  u1 = cv * T1
+
+  Vol1 = Vol_BDC
+  m1 = Vol1 / v1
+
+  m_in = (Vol_BDC - Vol_TDC) / v1
+
+  # =========================
+  # State 2 (TDC, isentropic compression)
+  # =========================
+  m2 = m1
+  Vol2 = Vol_TDC
+  v2 = Vol2 / m2
+
+  T2 = T1 * (CR ** (gamma - 1.0))
+  P2 = P1 * (CR ** gamma)
+  u2 = cv * T2
+
+  W_comp = m2 * (u2 - u1)
+
+  # fuel mass per cycle per cylinder
+  m_f = m_in / AF
+
+  # =========================
+  # State 3 (constant-pressure combustion model)
+  # =========================
+  P3 = P2
+  m3 = m2 + m_f
+
+  W_comb = P2 * (Vol3 - Vol2)
+
+  v3 = Vol3 / m3
+  T3 = P3 * v3 / R_air
+  u3 = cv * T3
+
+  m_f * HC = W_comb + m3 * u3 - m2 * u2
+
+  CutoffRatio = Vol3 / Vol2
+
+  # =========================
+  # State 4 (isentropic expansion to BDC)
+  # =========================
+  m4 = m3
+  Vol4 = Vol_BDC
+  v4 = Vol4 / m4
+
+  T4 = T3 * ((Vol3 / Vol4) ** (gamma - 1.0))
+  P4 = P3 * ((Vol3 / Vol4) ** gamma)
+  u4 = cv * T4
+
+  W_exp = m3 * (u3 - u4)
+
+  # =========================
+  # Turbine (exhaust drives compressor)
+  # =========================
+  P_t_in = P_c_out
+  P_t_out = P_amb
+  PR_t = P_t_in / P_t_out
+
+  T_t_in = (T4 + T1) / 2.0
+  T_s_t_out = T_t_in * ((1.0 / PR_t) ** ((gamma - 1.0) / gamma))
+  w_s_t_per_kg = cp * (T_t_in - T_s_t_out)
+  w_t_per_kg = eta_t * w_s_t_per_kg
+  T_t_out = T_t_in - w_t_per_kg / cp
+
+  f_turb * w_t_per_kg = w_c_per_kg
+
+  # =========================
+  # Net work and power
+  # =========================
+  W_net = W_exp + W_comb - W_comp
+  eta = W_net / (m_f * HC)
+
+  W_dot_net = W_net * N_cyl * N / 2.0
+  W_dot_net_kW = W_dot_net * W_to_kW
+  W_dot_net_hp = W_dot_net * W_to_hp
+
+  BWR = W_comp / W_exp
+  MEP = W_net / Vol_dis_cyl
+  MEP_kPa = MEP / 1000.0
+
+guesses:
+  # warm-start values (from the GEKKO solution)
+  ? Vol3 = 0.00024049975446
+  ? W_comb = 3099.368205
+  ? v3 = 0.052425216106
+  ? T3 = 3256.0452637
+  ? u3 = 2336684.6033
+  ? CutoffRatio = 3.607948415
+  ? T4 = 1731.3279569
+  ? P4 = 1954479.1332
+  ? u4 = 1242478.8516
+  ? W_exp = 5019.6495914
+  ? T_t_in = 1017.2389784
+  ? T_s_t_out = 729.61613207
+  ? w_s_t_per_kg = 288975.53662
+  ? w_t_per_kg = 225400.91856
+  ? T_t_out = 792.89315828
+  ? f_turb = 0.67777769997
+  ? W_net = 6093.5203926
+  ? eta = 0.56172926587
+  ? W_dot_net = 609352.03926
+  ? W_dot_net_kW = 609.35203926
+  ? W_dot_net_hp = 817.15454524
+  ? BWR = 0.40351370486
+  ? MEP = 5540258.2217
+  ? MEP_kPa = 5540.2582217
+
+report:
+  # compressor
+  P_c_out
+  T_s_c_out
+  T_c_out
+  w_c_per_kg
+
+  # cylinder
+  T1, P1
+  T2, P2
+  Vol2, Vol3
+  T3, P3
+  T4, P4
+  CutoffRatio
+
+  # turbine
+  T_t_in
+  T_s_t_out
+  T_t_out
+  w_t_per_kg
+  f_turb
+
+  # work + performance
+  W_comp
+  W_comb
+  W_exp
+  W_net
+  eta
+  W_dot_net_kW
+  W_dot_net_hp
+  BWR
+  MEP_kPa
+
+solve:
+  backend = scipy
+  method = hybr
+
+  # looser than the default; prevents unnecessary fallback behavior
+  tol = 0.000001
+
+  # crank up iterations so SciPy doesn't stop early
+  max_iter = 20000
+  max_restarts = 0

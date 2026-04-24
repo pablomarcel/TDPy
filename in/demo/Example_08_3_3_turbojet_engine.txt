@@ -1,0 +1,168 @@
+title: Example 8.3-3 — Turbojet Engine (ideal-gas model, inline/unrolled)
+
+# Klein & Nellis, Thermodynamics (Cambridge, 2011)
+# Notes:
+# - Ideal-gas, constant cp/gamma model (no thermo property calls).
+# - Procedure calls (Compressor/Turbine) are fully unrolled.
+# - No scientific notation used anywhere.
+
+given:
+  # Inputs
+  M        = 0.85
+  T_amb    = 227.0
+  P_atm    = 29080.275          # 0.287 atm -> Pa
+  K_p      = 0.65
+  eta_c    = 0.89
+  eta_t    = 0.91
+  eta_n    = 0.93
+  HC       = 48000000.0         # J/kg
+  PR       = 5.0
+  T_t_in   = 1573.15            # 1300 C -> K
+  F_thrust = 15000.0            # 15 kN -> N
+
+  # Ideal-gas constants (Air)
+  R_air  = 287.058
+  gamma  = 1.4
+  cp     = 1004.703
+  cv     = 717.645
+
+  # Unit conversion for SFC to English units (kg/s/N -> lbm/hr/lbf)
+  kgpsN_to_lbmhrlbf = 35303.94
+
+  # Fixed states
+  T1 = T_amb
+  P1 = P_atm
+  P6 = P_atm
+  T4 = T_t_in
+
+  # Initial guesses (only a few are essential; warm-start fills the rest)
+  {AF   = 45.0}
+  {P5   = 120000.0}
+  {m_dot = 100.0}
+
+equations:
+  # -------------------------
+  # State 1 (freestream)
+  # -------------------------
+  a1    = sqrt(gamma * R_air * T1)
+  Vel1  = M * a1
+  h1    = cp * T1
+  v1    = R_air * T1 / P1
+
+  # -------------------------
+  # State 2 (diffuser)
+  # -------------------------
+  P2    = P1 + K_p * Vel1 * Vel1 / (2.0 * v1)
+  h2    = h1 + Vel1 * Vel1 / 2.0
+  T2    = h2 / cp
+
+  # -------------------------
+  # State 3 (compressor)
+  # -------------------------
+  P3    = P2 * PR
+  T3s   = T2 * ((P3 / P2) ** ((gamma - 1.0) / gamma))
+  w_s_c_per_kg = cp * (T3s - T2)
+  w_c_per_kg   = w_s_c_per_kg / eta_c
+  T3    = T2 + w_c_per_kg / cp
+  h3    = cp * T3
+  W_c_per_kg = h3 - h2
+
+  # -------------------------
+  # State 4 (combustor)
+  # -------------------------
+  P4    = P3
+  h4    = cp * T4
+  # Combustor energy balance (solves AF)
+  h3 + HC / AF = h4 * (1.0 + 1.0 / AF)
+
+  # -------------------------
+  # State 5 (turbine)
+  # -------------------------
+  T5s   = T4 * ((P5 / P4) ** ((gamma - 1.0) / gamma))
+  h5s   = cp * T5s
+  w_s_t_per_kg_gas = h4 - h5s
+  w_t_per_kg_gas   = eta_t * w_s_t_per_kg_gas
+  h5    = h4 - w_t_per_kg_gas
+  T5    = h5 / cp
+
+  # Turbine work per kg air (includes fuel mass flow through turbine)
+  W_t_per_kg_air = (1.0 + 1.0 / AF) * (h4 - h5)
+
+  # Power balance (turbine drives compressor)
+  W_t_per_kg_air = W_c_per_kg
+
+  # -------------------------
+  # State 6 (nozzle to ambient)
+  # -------------------------
+  T6s   = T5 * ((P6 / P5) ** ((gamma - 1.0) / gamma))
+  h6s   = cp * T6s
+  Vel_s6 = sqrt(2.0 * (h5 - h6s))
+  Vel6   = sqrt(eta_n) * Vel_s6
+  h6     = h5 - Vel6 * Vel6 / 2.0
+  T6     = h6 / cp
+
+  # -------------------------
+  # Thrust + performance
+  # -------------------------
+  F_thrust = m_dot * (1.0 + 1.0 / AF) * Vel6 - m_dot * Vel1
+
+  m_dot_f = m_dot / AF
+  SFC = m_dot_f / F_thrust
+  SFC_English = SFC * kgpsN_to_lbmhrlbf
+
+  eta_th = ((m_dot + m_dot_f) * Vel6 * Vel6 - m_dot * Vel1 * Vel1) / (2.0 * m_dot_f * HC)
+  eta_p  = 2.0 * Vel1 * F_thrust / ((m_dot + m_dot_f) * Vel6 * Vel6 - m_dot * Vel1 * Vel1)
+  eta_o  = eta_th * eta_p
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.00000001
+  max_iter: 8000
+  max_restarts: 2
+
+report:
+  # Inputs
+  M
+  T_amb
+  P_atm
+  K_p
+  eta_c
+  eta_t
+  eta_n
+  HC
+  PR
+  T_t_in
+  F_thrust
+
+  # Key solved vars
+  AF
+  P5
+  m_dot
+  m_dot_f
+
+  # States
+  T1
+  P1
+  Vel1
+  T2
+  P2
+  T3
+  P3
+  T4
+  P4
+  T5
+  T5s
+  T6
+  T6s
+  P6
+  Vel6
+
+  # Works / performance
+  W_c_per_kg
+  W_t_per_kg_air
+  SFC
+  SFC_English
+  eta_th
+  eta_p
+  eta_o

@@ -1,0 +1,98 @@
+title: Klein & Nellis — Example 6.3-2 — Entropy Change for Nitrogen (TDPy)
+
+# THERMODYNAMICS — S.A. Klein and G.F. Nellis — Cambridge University Press (2011)
+# Example 6.3-2 Entropy Change for Nitrogen
+#
+# Rules followed:
+# - inline equations (no procedures/functions)
+# - primitives unrolled (no convert(), converttemp(), etc.)
+# - no scientific notation anywhere
+# - report uses variable names only (no hyphen bullets)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 200
+  max_restarts: 2
+
+given:
+  # ---------------- coefficients of cP(T) correlation ----------------
+  a = 1394.3
+  b = -18302.0
+  c = 38292.0
+  d = -29286.0
+
+  # ---------------- nitrogen gas constant (J/kg-K) ----------------
+  # R = R_u / M ; R_u = 8.314462618 J/mol-K ; M(N2) = 0.0280134 kg/mol
+  R = 296.80305203938116
+
+  # ---------------- reference temperature (K) ----------------
+  T_ref = 100.0
+
+  # ---------------- temperatures (C -> K unrolled) ----------------
+  T_1 = 303.15
+  T_2 = 423.15
+
+  # ---------------- EES comparison state: v = 999 m^3/kg ----------------
+  v_big = 999.0
+  rho_big = 0.001001001001001
+
+  # ---------------- working fluid string for PropsSI ----------------
+  fluid = 'Nitrogen'
+
+equations:
+  # ---------------- helpers ----------------
+  ln_T2_T1 = ln(T_2 / T_1)
+
+  Tref_1p5 = T_ref ^ 1.5
+  Tref_2 = T_ref * T_ref
+  Tref_3 = Tref_2 * T_ref
+
+  b_ref = b * Tref_1p5
+  c_ref = c * Tref_2
+  d_ref = d * Tref_3
+
+  inv_T1_1p5 = T_1 ^ (-1.5)
+  inv_T2_1p5 = T_2 ^ (-1.5)
+  inv_T1_2 = T_1 ^ (-2.0)
+  inv_T2_2 = T_2 ^ (-2.0)
+  inv_T1_3 = T_1 ^ (-3.0)
+  inv_T2_3 = T_2 ^ (-3.0)
+
+  term_a = (a - R) * ln_T2_T1
+  term_b = b_ref * (inv_T2_1p5 - inv_T1_1p5) / 1.5
+  term_c = c_ref * (inv_T2_2 - inv_T1_2) / 2.0
+  term_d = d_ref * (inv_T2_3 - inv_T1_3) / 3.0
+
+  DELTAs = term_a - term_b - term_c - term_d
+
+  # ---------------- "EES" comparison via very low density (v=999 m^3/kg) ----------------
+  s_T1_bigv = PropsSI("SMASS","T",T_1,"DMASS",rho_big,fluid)
+  s_T2_bigv = PropsSI("SMASS","T",T_2,"DMASS",rho_big,fluid)
+  DELTAs_EES = s_T2_bigv - s_T1_bigv
+
+  # ---------------- constant-cv approximation at average temperature ----------------
+  T_avg = (T_1 + T_2) / 2.0
+
+  inv_Tavg_1p5 = T_avg ^ (-1.5)
+  inv_Tavg_2 = T_avg ^ (-2.0)
+  inv_Tavg_3 = T_avg ^ (-3.0)
+
+  c_v_avg = (a - R) + b_ref * inv_Tavg_1p5 + c_ref * inv_Tavg_2 + d_ref * inv_Tavg_3
+  DELTAs_app = c_v_avg * ln_T2_T1
+
+  # ---------------- deltas for quick comparison ----------------
+  DELTAs_err_EES_minus_poly = DELTAs_EES - DELTAs
+  DELTAs_err_app_minus_poly = DELTAs_app - DELTAs
+
+report:
+  a, b, c, d, R, T_ref
+  T_1, T_2, T_avg
+  v_big, rho_big
+  ln_T2_T1
+  term_a, term_b, term_c, term_d
+  DELTAs
+  s_T1_bigv, s_T2_bigv, DELTAs_EES
+  c_v_avg, DELTAs_app
+  DELTAs_err_EES_minus_poly, DELTAs_err_app_minus_poly

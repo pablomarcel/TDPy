@@ -1,0 +1,172 @@
+title: Klein & Nellis — Example 7.5-1(a-c) — Exergy Analysis of a Commercial Laundry Facility (TDPy)
+
+# Rules satisfied:
+# - Inline equations (no procedures / functions)
+# - Primitives unrolled (no convert(), converttemp(), etc.)
+# - No scientific notation anywhere
+# - No hyphens in report variable names
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 8000
+  max_restarts: 2
+
+given:
+  # ---------------- dead state for flow exergy reference ----------------
+  T0_ref = 283.15
+  P0_ref = 101325.0
+
+  # ---------------- supply water (state 1) ----------------
+  T1_in = 283.15
+  P1_in = 303975.0
+
+  # ---------------- water to laundry (state 2) ----------------
+  T2_out = 338.15
+  DP_w_hx = 50000.0
+  P2_out = 253975.0
+
+  m_dot_w = 0.6944444444444444
+  eta_p = 0.45
+  eta_b = 0.88
+
+  # ---------------- boiler / steam side ----------------
+  P3 = 8618446.61646
+  DP_b = 430000.0
+  P4 = 8188446.61646
+  T4 = 723.15
+
+  x5 = 0.0
+  DP_s_hx = 350000.0
+  P5 = 7838446.61646
+
+  # ---------------- energy + cost inputs ----------------
+  LHV = 50000000.0
+  W_dot_e = 32000.0
+
+  C_elec = 0.0000000416666666667
+  C_fuel = 0.0000000123216225641
+  sec_per_hr = 3600.0
+
+guesses:
+  ? Q_dot_HX = 160000.0
+  ? m_dot_s = 0.08
+
+  ? W_dot_s_p = 80.0
+  ? W_dot_p = 180.0
+
+  ? h3 = 1200000.0
+  ? x_f3 = 100000.0
+
+  ? Q_dot_b = 180000.0
+  ? Q_dot_f = 205000.0
+  ? m_dot_f = 0.0041
+
+  ? eta_2 = 0.30
+
+  ? X_dot_des_b = 50000.0
+  ? X_dot_des_p = 1000.0
+  ? X_dot_des_hx = 20000.0
+
+  ? Cost = 0.004
+  ? Cost_dph = 15.0
+
+equations:
+  # ---------------- dead state properties (for flow exergy reference) ----------------
+  h0 = PropsSI("HMASS","T",T0_ref,"P",P0_ref,"Water")
+  s0 = PropsSI("SMASS","T",T0_ref,"P",P0_ref,"Water")
+
+  # ---------------- state 1: supply water ----------------
+  h1 = PropsSI("HMASS","T",T1_in,"P",P1_in,"Water")
+  s1 = PropsSI("SMASS","T",T1_in,"P",P1_in,"Water")
+  x_f1 = h1 - h0 - T0_ref * (s1 - s0)
+
+  # ---------------- state 2: water to laundry ----------------
+  h2 = PropsSI("HMASS","T",T2_out,"P",P2_out,"Water")
+  s2 = PropsSI("SMASS","T",T2_out,"P",P2_out,"Water")
+  x_f2 = h2 - h0 - T0_ref * (s2 - s0)
+
+  # heat transfer rate to water in HX
+  Q_dot_HX - m_dot_w * (h2 - h1) = 0.0
+
+  # ---------------- state 4: steam leaving boiler (superheated) ----------------
+  h4 = PropsSI("HMASS","T",T4,"P",P4,"Water")
+  s4 = PropsSI("SMASS","T",T4,"P",P4,"Water")
+  x_f4 = h4 - h0 - T0_ref * (s4 - s0)
+
+  # ---------------- state 5: condensate leaving HX (sat. liquid) ----------------
+  T5 = PropsSI("T","P",P5,"Q",x5,"Water")
+  h5 = PropsSI("HMASS","P",P5,"Q",x5,"Water")
+  s5 = PropsSI("SMASS","P",P5,"Q",x5,"Water")
+  x_f5 = h5 - h0 - T0_ref * (s5 - s0)
+
+  # ---------------- steam-side HX energy balance ----------------
+  m_dot_s * (h4 - h5) - Q_dot_HX = 0.0
+
+  # ---------------- reversible pump reference (5 -> 3) ----------------
+  h_s3 = PropsSI("HMASS","P",P3,"SMASS",s5,"Water")
+
+  # reversible pump work and actual pump work
+  W_dot_s_p - m_dot_s * (h_s3 - h5) = 0.0
+  W_dot_p - W_dot_s_p / eta_p = 0.0
+
+  # actual pump outlet enthalpy (state 3)
+  h3 - (h5 + W_dot_p / m_dot_s) = 0.0
+
+  # flow exergy at state 3 (depends on h3)
+  x_f3 - (h3 - h0 - T0_ref * (PropsSI("SMASS","P",P3,"HMASS",h3,"Water") - s0)) = 0.0
+
+  # ---------------- boiler energy balance and fuel rate ----------------
+  Q_dot_b - m_dot_s * (h4 - h3) = 0.0
+  Q_dot_f - Q_dot_b / eta_b = 0.0
+  m_dot_f - Q_dot_f / LHV = 0.0
+
+  # ---------------- second law efficiency ----------------
+  eta_2 - (m_dot_w * (x_f2 - x_f1)) / (m_dot_f * LHV + W_dot_p) = 0.0
+
+  # ---------------- exergy destruction rates ----------------
+  X_dot_des_b - (m_dot_f * LHV + m_dot_s * x_f3 - m_dot_s * x_f4) = 0.0
+  X_dot_des_p - (m_dot_s * x_f5 + W_dot_p - m_dot_s * x_f3) = 0.0
+  X_dot_des_hx - (m_dot_s * x_f4 + m_dot_w * x_f1 - m_dot_s * x_f5 - m_dot_w * x_f2) = 0.0
+
+  # ---------------- operating cost ----------------
+  Cost - (m_dot_f * LHV * C_fuel + (W_dot_e + W_dot_p) * C_elec) = 0.0
+  Cost_dph - Cost * sec_per_hr = 0.0
+
+report:
+  T0_ref, P0_ref
+  T1_in, P1_in
+  T2_out, P2_out, DP_w_hx
+  m_dot_w
+  eta_p, eta_b
+  P3, P4, P5, DP_b, DP_s_hx
+  T4, T5, x5
+  LHV, W_dot_e
+  C_elec, C_fuel
+
+  h0, s0
+  h1, s1, x_f1
+  h2, s2, x_f2
+  h4, s4, x_f4
+  h5, s5, x_f5
+  h_s3
+
+  Q_dot_HX
+  m_dot_s
+  W_dot_s_p
+  W_dot_p
+  h3
+  x_f3
+
+  Q_dot_b
+  Q_dot_f
+  m_dot_f
+
+  eta_2
+  X_dot_des_b
+  X_dot_des_p
+  X_dot_des_hx
+
+  Cost
+  Cost_dph

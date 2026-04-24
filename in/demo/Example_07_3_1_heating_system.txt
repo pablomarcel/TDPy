@@ -1,0 +1,110 @@
+title: Example 7.3-1 Heating System (TDPy)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# EXAMPLE 7.3-1 Heating System
+#
+# Rules followed:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp())
+# - No scientific notation anywhere
+# - No hyphens in report variable names
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  # Dead state / reference
+  T_0 = 266.4833333333333          # K  (20 F)
+  P_0 = 101325.0                   # Pa (1 atm)
+
+  # Air exit temperature from heat exchanger
+  T_1 = 316.48333333333335         # K  (110 F)
+
+  # Volumetric flow rate of entering air
+  V_dot = 0.1746205565565          # m^3/s (370 cfm)
+
+  # Building and thermal reservoir temperatures
+  T_b = 297.0388888888889          # K  (75 F)
+  T_H = 1310.9277777777777         # K  (1900 F)
+
+  # Alternative system parameters
+  eta_engine = 0.35
+  COP_hp = 3.5
+  Q_dot_b = 11617.0                # W
+
+  # Small guard for divisions
+  eps = 0.000001
+
+guesses:
+  ? h_0 = 260000.0
+  ? s_0 = 5200.0
+  ? rho_0 = 1.32
+  ? v_0 = 0.76
+  ? m_dot = 0.23
+
+  ? h_1 = 310000.0
+  ? s_1 = 5370.0
+  ? Q_dot = 11600.0
+
+  ? X_dot_Q = 9200.0
+  ? x_f_1 = 4200.0
+  ? DELTAX_dot_f_air = 980.0
+  ? eta_2 = 0.11
+
+  ? W_dot_hp = 3320.0
+  ? Q_dot_H = 9500.0
+  ? eta_1 = 1.22
+  ? X_dot_Q_b = 1200.0
+  ? X_dot_Q_H = 7600.0
+  ? eta_2_alt = 0.16
+
+equations:
+  # Inlet air properties at (T_0, P_0)
+  h_0 - PropsSI("HMASS","T",T_0,"P",P_0,"Air") = 0.0
+  s_0 - PropsSI("SMASS","T",T_0,"P",P_0,"Air") = 0.0
+  rho_0 - PropsSI("DMASS","T",T_0,"P",P_0,"Air") = 0.0
+  v_0 - (1.0 / max(eps, rho_0)) = 0.0
+
+  # Mass flow rate from volumetric flow
+  m_dot - (V_dot / v_0) = 0.0
+
+  # Exit air properties at (T_1, P_0)
+  h_1 - PropsSI("HMASS","T",T_1,"P",P_0,"Air") = 0.0
+  s_1 - PropsSI("SMASS","T",T_1,"P",P_0,"Air") = 0.0
+
+  # Energy balance on the heat exchanger
+  Q_dot + m_dot * (h_0 - h_1) = 0.0
+
+  # Exergy associated with heat transfer from thermal reservoir
+  X_dot_Q - (Q_dot * (1.0 - T_0 / T_H)) = 0.0
+
+  # Flow exergy increase of the air (relative to dead state)
+  x_f_1 - (h_1 - h_0 - T_0 * (s_1 - s_0)) = 0.0
+  DELTAX_dot_f_air - (m_dot * x_f_1) = 0.0
+
+  # Second law efficiency
+  eta_2 - (DELTAX_dot_f_air / max(eps, X_dot_Q)) = 0.0
+
+  # =============================
+  # Alternative system (engine + heat pump)
+  # =============================
+  W_dot_hp - (Q_dot_b / COP_hp) = 0.0
+  Q_dot_H - (W_dot_hp / max(eps, eta_engine)) = 0.0
+  eta_1 - (Q_dot_b / max(eps, Q_dot_H)) = 0.0
+
+  X_dot_Q_b - (Q_dot_b * (1.0 - T_0 / T_b)) = 0.0
+  X_dot_Q_H - (Q_dot_H * (1.0 - T_0 / T_H)) = 0.0
+  eta_2_alt - (X_dot_Q_b / max(eps, X_dot_Q_H)) = 0.0
+
+report:
+  T_0, P_0, T_1, V_dot, T_b, T_H
+  h_0, s_0, rho_0, v_0, m_dot
+  h_1, s_1, Q_dot
+  X_dot_Q, x_f_1, DELTAX_dot_f_air, eta_2
+  eta_engine, COP_hp, Q_dot_b
+  W_dot_hp, Q_dot_H, eta_1
+  X_dot_Q_b, X_dot_Q_H, eta_2_alt

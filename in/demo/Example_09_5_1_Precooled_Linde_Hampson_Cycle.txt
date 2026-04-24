@@ -1,0 +1,195 @@
+title: Klein & Nellis — Example 9.5-1 — Precooled Linde-Hampson Cycle — TDPy
+
+given:
+  # ---------------- unrolled primitives ----------------
+  # temperatures
+  T_H_in = 293.15            # K (20 C)
+  T_N_in = 90.0              # K
+
+  # pressures
+  P_H_in = 20265000.0        # Pa (200 atm)
+  P_H_out = 101325.0         # Pa (1 atm)
+  P_N_in = 405300.0          # Pa (4 atm)
+  P_N_out = 20000.0          # Pa (20 kPa)
+
+  # approach temperature differences
+  DT_rec_1 = 10.0            # K
+  DT_rec_2 = 15.0            # K
+  DT_rec_3 = 5.0             # K
+  DT_pc = 5.0                # K
+
+  # split between recuperators 1 and 2
+  y = 0.75
+
+equations:
+  # ---------------- convenience (constants expressed as equations; interpreter may fold them) ----------------
+  T1 = T_H_in
+  P1 = P_H_in
+
+  T11 = T_H_in - DT_rec_1
+  P11 = P_H_out
+
+  P8 = P_H_out
+  x8 = 0.0
+
+  P9 = P_H_out
+  x9 = 1.0
+
+  P12 = P_N_in
+  T12 = T_N_in
+
+  P13 = P_N_out
+  P14 = P_N_out
+  x14 = 1.0
+
+  P5 = P_H_in
+  P10 = P_H_out
+
+  T15 = T_H_in - DT_rec_2
+  P15 = P_N_out
+
+  P6 = P_H_in
+  P7 = P_H_out
+
+  P2 = P_H_in
+  P3 = P_H_in
+  P4 = P_H_in
+
+  # ---------------- State 1: Hydrogen inlet ----------------
+  h1 = PropsSI("HMASS","T",T1,"P",P1,"Hydrogen")
+  s1 = PropsSI("SMASS","T",T1,"P",P1,"Hydrogen")
+
+  # ---------------- State 11: Hydrogen gas outlet ----------------
+  h11 = PropsSI("HMASS","T",T11,"P",P11,"Hydrogen")
+  s11 = PropsSI("SMASS","T",T11,"P",P11,"Hydrogen")
+
+  # ---------------- State 8: Hydrogen reservoir liquid outlet (sat. liquid) ----------------
+  T8 = PropsSI("T","P",P8,"Q",x8,"Hydrogen")
+  h8 = PropsSI("HMASS","P",P8,"Q",x8,"Hydrogen")
+  s8 = PropsSI("SMASS","P",P8,"Q",x8,"Hydrogen")
+
+  # ---------------- State 9: Hydrogen reservoir vapor outlet (sat. vapor) ----------------
+  T9 = PropsSI("T","P",P9,"Q",x9,"Hydrogen")
+  h9 = PropsSI("HMASS","P",P9,"Q",x9,"Hydrogen")
+  s9 = PropsSI("SMASS","P",P9,"Q",x9,"Hydrogen")
+
+  # ---------------- State 12: Nitrogen inlet ----------------
+  h12 = PropsSI("HMASS","T",T12,"P",P12,"Nitrogen")
+  s12 = PropsSI("SMASS","T",T12,"P",P12,"Nitrogen")
+
+  # ---------------- State 13: Nitrogen throttle outlet / Precooler inlet ----------------
+  h13 = h12
+  T13 = PropsSI("T","P",P13,"HMASS",h13,"Nitrogen")
+  s13 = PropsSI("SMASS","P",P13,"HMASS",h13,"Nitrogen")
+  x13 = PropsSI("Q","P",P13,"HMASS",h13,"Nitrogen")
+
+  # ---------------- State 14: Precooler vapor nitrogen outlet (sat. vapor) ----------------
+  T14 = PropsSI("T","P",P14,"Q",x14,"Nitrogen")
+  h14 = PropsSI("HMASS","P",P14,"Q",x14,"Nitrogen")
+  s14 = PropsSI("SMASS","P",P14,"Q",x14,"Nitrogen")
+
+  # ---------------- State 5: Precooler hydrogen outlet / Recuperator 3 inlet ----------------
+  T5 = T14 + DT_pc
+  h5 = PropsSI("HMASS","T",T5,"P",P5,"Hydrogen")
+  s5 = PropsSI("SMASS","T",T5,"P",P5,"Hydrogen")
+
+  # ---------------- State 10: Recuperator 3 outlet / Recuperator 1 inlet ----------------
+  T10 = T5 - DT_rec_3
+  h10 = PropsSI("HMASS","T",T10,"P",P10,"Hydrogen")
+  s10 = PropsSI("SMASS","T",T10,"P",P10,"Hydrogen")
+
+  # ---------------- State 15: Recuperator 2 nitrogen outlet ----------------
+  h15 = PropsSI("HMASS","T",T15,"P",P15,"Nitrogen")
+  s15 = PropsSI("SMASS","T",T15,"P",P15,"Nitrogen")
+
+  # ---------------- Unknowns: f (H2 liquefied fraction), z (N2/H2 mass-flow ratio) ----------------
+  # ---------------- State 6: Recuperator 3 outlet / Hydrogen throttle inlet ----------------
+  h5 + (1.0 - f) * h9 = h6 + (1.0 - f) * h10
+  T6 = PropsSI("T","P",P6,"HMASS",h6,"Hydrogen")
+  s6 = PropsSI("SMASS","P",P6,"HMASS",h6,"Hydrogen")
+
+  # ---------------- State 7: Hydrogen throttle outlet / Hydrogen reservoir inlet ----------------
+  h7 = h6
+  T7 = PropsSI("T","P",P7,"HMASS",h7,"Hydrogen")
+  s7 = PropsSI("SMASS","P",P7,"HMASS",h7,"Hydrogen")
+  x7 = PropsSI("Q","P",P7,"HMASS",h7,"Hydrogen")
+
+  # ---------------- Hydrogen reservoir energy balance ----------------
+  h7 = f * h8 + (1.0 - f) * h9
+
+  # ---------------- State 2: Recuperator 1 hydrogen outlet / Mixing tee inlet ----------------
+  (1.0 - f) * h10 + y * h1 = y * h2 + (1.0 - f) * h11
+  T2 = PropsSI("T","P",P2,"HMASS",h2,"Hydrogen")
+  s2 = PropsSI("SMASS","P",P2,"HMASS",h2,"Hydrogen")
+
+  # ---------------- Overall liquefier energy balance (defines z) ----------------
+  h1 + z * h12 = (1.0 - f) * h11 + f * h8 + z * h15
+
+  # ---------------- State 3: Recuperator 2 hydrogen outlet / Mixing tee inlet ----------------
+  (1.0 - y) * h1 + z * h14 = (1.0 - y) * h3 + z * h15
+  T3 = PropsSI("T","P",P3,"HMASS",h3,"Hydrogen")
+  s3 = PropsSI("SMASS","P",P3,"HMASS",h3,"Hydrogen")
+
+  # ---------------- State 4: Mixing tee outlet / Precooler inlet ----------------
+  y * h2 + (1.0 - y) * h3 = h4
+  T4 = PropsSI("T","P",P4,"HMASS",h4,"Hydrogen")
+  s4 = PropsSI("SMASS","P",P4,"HMASS",h4,"Hydrogen")
+
+guesses:
+  # primary unknowns
+  ? f = 0.05
+  ? z = 0.20
+
+  # hydrogen enthalpies (J/kg)
+  ? h2 = 1500000.0
+  ? h3 = 1500000.0
+  ? h4 = 1500000.0
+  ? h6 = 1200000.0
+  ? h7 = 1200000.0
+
+  # temperatures (K)
+  ? T2 = 250.0
+  ? T3 = 250.0
+  ? T4 = 200.0
+  ? T6 = 140.0
+  ? T7 = 60.0
+
+  # nitrogen quality after throttle
+  ? x13 = 0.2
+
+report:
+  # inputs
+  T_H_in, P_H_in, P_H_out
+  T_N_in, P_N_in, P_N_out
+  DT_rec_1, DT_rec_2, DT_rec_3, DT_pc
+  y
+
+  # unknowns (answers)
+  f
+  z
+
+  # hydrogen states
+  T1, P1, h1, s1
+  T2, P2, h2, s2
+  T3, P3, h3, s3
+  T4, P4, h4, s4
+  T5, P5, h5, s5
+  T6, P6, h6, s6
+  T7, P7, h7, s7, x7
+  T8, P8, h8, s8
+  T9, P9, h9, s9
+  T10, P10, h10, s10
+  T11, P11, h11, s11
+
+  # nitrogen states
+  T12, P12, h12, s12
+  T13, P13, h13, s13, x13
+  T14, P14, h14, s14
+  T15, P15, h15, s15
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 0.0000000001
+  max_iter = 900
+  max_restarts = 2

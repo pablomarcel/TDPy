@@ -1,0 +1,210 @@
+title: Klein & Nellis — Example 8.6-1 — Optimizing Operation of a Rankine Power Plant (Toluene) — TDPy optimizer v5 (scaled, smooth)
+
+solve:
+  backend: scipy
+  method: SLSQP
+  tol: 0.00000001
+  max_iter: 2500
+  max_restarts: 2
+
+given:
+  # hot-side fluid
+  T_H_in = 453.15
+  V_dot_H = 0.004100862766
+  rho_H = 1000.0
+  c_H = 4200.0
+
+  # cold-side fluid
+  T_C_in = 298.15
+  V_dot_C = 11.0907649152
+  rho_C = 1.0
+  c_C = 1000.0
+
+  # heat exchangers
+  UA_b = 33000.0
+  UA_cond = 35000.0
+
+  # turbine inlet + component efficiencies
+  T_t_in = 443.15
+  eta_HPt = 0.87
+  eta_LPt = 0.84
+  eta_HPp = 0.58
+  eta_LPp = 0.52
+
+  # conversions
+  W_to_kW = 0.001
+
+  # capacitance rates + effectiveness (given from book/worked calc)
+  m_dot_H = 4.100862766
+  C_dot_H = 17223.6236172
+  eff_b = 0.8528014799863741
+
+  m_dot_C = 11.0907649152
+  C_dot_C = 11090.7649152
+  eff_cond = 0.9573947898120179
+
+  # scaling constants (NO SCI NOTATION)
+  S_T = 100.0
+  S_P = 100000.0
+  S_H = 1000000.0
+  S_S = 1000.0
+  S_Q = 1000000.0
+  S_W = 1000000.0
+
+design_vars:
+  T_b
+
+bounds:
+  # design variable
+  T_b: [340.0, 440.0]
+
+  # keep condenser above ambient, but not crazy high
+  T_cond: [300.0, 380.0]
+
+  # physically meaningful ranges (helps PropsSI stay sane)
+  P_b: [5000.0, 5000000.0]
+  P_cond: [500.0, 200000.0]
+  P_int: [1000.0, 2000000.0]
+
+  # extraction fraction and working-fluid mass flow
+  f: [0.0, 0.5]
+  m_dot: [0.05, 50.0]
+
+objective:
+  max W_dot_net
+
+equations:
+  # 1) Hot-side HX duty sets boiler heat input
+  (Q_dot_H - eff_b * C_dot_H * (T_H_in - T_b)) / S_Q = 0.0
+
+  # 2) Boiler saturation pressure (toluene)
+  (P_b - PropsSI("P","T",T_b,"Q",0.0,"Toluene")) / S_P = 0.0
+
+  # 3) Condenser saturation pressure from condenser saturation temperature
+  (P_cond - PropsSI("P","T",T_cond,"Q",0.0,"Toluene")) / S_P = 0.0
+
+  # 4) Intermediate pressure (positive, smooth)
+  (P_int - sqrt(P_b * P_cond)) / S_P = 0.0
+
+  # =========================
+  # State 5: sat liquid at condenser pressure
+  # =========================
+  (h5 - PropsSI("HMASS","P",P_cond,"Q",0.0,"Toluene")) / S_H = 0.0
+  (s5 - PropsSI("SMASS","P",P_cond,"Q",0.0,"Toluene")) / S_S = 0.0
+
+  # =========================
+  # State 6: LP pump to P_int
+  # =========================
+  (h6 - (h5 + (PropsSI("HMASS","P",P_int,"SMASS",s5,"Toluene") - h5) / eta_LPp)) / S_H = 0.0
+
+  # =========================
+  # State 7: open FWH outlet = sat liquid at P_int
+  # =========================
+  (h7 - PropsSI("HMASS","P",P_int,"Q",0.0,"Toluene")) / S_H = 0.0
+  (s7 - PropsSI("SMASS","P",P_int,"Q",0.0,"Toluene")) / S_S = 0.0
+
+  # =========================
+  # State 1: HP pump to P_b
+  # =========================
+  (h1 - (h7 + (PropsSI("HMASS","P",P_b,"SMASS",s7,"Toluene") - h7) / eta_HPp)) / S_H = 0.0
+
+  # =========================
+  # State 2: turbine inlet at (P_b, T_t_in)
+  # =========================
+  (h2 - PropsSI("HMASS","T",T_t_in,"P",P_b,"Toluene")) / S_H = 0.0
+  (s2 - PropsSI("SMASS","T",T_t_in,"P",P_b,"Toluene")) / S_S = 0.0
+
+  # =========================
+  # State 3: HP turbine to P_int
+  # =========================
+  (h3 - (h2 - eta_HPt * (h2 - PropsSI("HMASS","P",P_int,"SMASS",s2,"Toluene")))) / S_H = 0.0
+  (s3 - PropsSI("SMASS","P",P_int,"HMASS",h3,"Toluene")) / S_S = 0.0
+
+  # =========================
+  # State 4: LP turbine to P_cond
+  # =========================
+  (h4 - (h3 - eta_LPt * (h3 - PropsSI("HMASS","P",P_cond,"SMASS",s3,"Toluene")))) / S_H = 0.0
+
+  # =========================
+  # Open feedwater heater extraction fraction
+  # =========================
+  (f * h3 + (1.0 - f) * h6 - h7) / S_H = 0.0
+
+  # =========================
+  # Boiler working-fluid mass flow from heat input
+  # =========================
+  (Q_dot_H - m_dot * (h2 - h1)) / S_Q = 0.0
+
+  # =========================
+  # Condenser HX constraint (determines T_cond)
+  # =========================
+  (m_dot * (1.0 - f) * (h4 - h5) - eff_cond * C_dot_C * (T_cond - T_C_in)) / S_Q = 0.0
+
+  # =========================
+  # Net power
+  # =========================
+  (W_dot_net - (m_dot * (h2 - h3) + m_dot * (1.0 - f) * (h3 - h4) - m_dot * (h1 - h7) - m_dot * (1.0 - f) * (h6 - h5))) / S_W = 0.0
+  (W_dot_net_kW - W_dot_net * W_to_kW) / 1000.0 = 0.0
+
+  # efficiency and hot outlet temp (reported)
+  eta = W_dot_net / Q_dot_H
+  (T_H_out - (T_H_in - Q_dot_H / C_dot_H)) / S_T = 0.0
+
+guesses:
+  # design
+  ? T_b = 410.0
+
+  # condenser state
+  ? T_cond = 315.0
+  ? P_cond = 10000.0
+
+  # pressures
+  ? P_b = 300000.0
+  ? P_int = 55000.0
+
+  # flows / extraction
+  ? f = 0.12
+  ? m_dot = 2.0
+
+  # duties / work
+  ? Q_dot_H = 600000.0
+  ? W_dot_net = 60000.0
+  ? W_dot_net_kW = 60.0
+  ? eta = 0.10
+  ? T_H_out = 418.0
+
+  # enthalpies / entropies (rough)
+  ? h5 = 200000.0
+  ? s5 = 600.0
+  ? h6 = 260000.0
+  ? h7 = 230000.0
+  ? s7 = 700.0
+  ? h1 = 270000.0
+  ? h2 = 550000.0
+  ? s2 = 1600.0
+  ? h3 = 470000.0
+  ? s3 = 1700.0
+  ? h4 = 360000.0
+
+report:
+  T_H_in, T_C_in
+  UA_b, UA_cond
+  T_t_in
+  eta_HPt, eta_LPt, eta_HPp, eta_LPp
+
+  T_b
+  T_cond
+  P_b, P_int, P_cond
+
+  Q_dot_H
+  T_H_out
+
+  f
+  m_dot
+
+  h1, h2, h3, h4, h5, h6, h7
+  s2, s3, s5, s7
+
+  W_dot_net
+  W_dot_net_kW
+  eta

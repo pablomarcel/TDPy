@@ -1,0 +1,133 @@
+title: Klein & Nellis — Example 6.6-3 — Intercooled Compression (a-d) — TDPy (Air, PropsSI) — FIXED
+
+# Rules satisfied:
+# - inline equations (no procedures)
+# - primitives unrolled (no convert(), converttemp(), duplicate(), etc.)
+# - no scientific notation
+# - report names are plain variable names (no hyphens)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 2000
+  max_restarts: 2
+
+given:
+  # Fluid (symbol constant)
+  fluid = 'Air'
+
+  # Unrolled inputs
+  P_atm = 100000.0            # Pa  (100 kPa)
+  T_amb = 293.15              # K   (20 C)
+  P2 = 1000000.0              # Pa  (1 MPa)
+  eta_c = 0.74                # compressor isentropic efficiency
+  m_dot = 0.5                 # kg/s
+
+  # Unit helpers
+  W_to_kW = 0.001
+
+  # Parametric helper for the (optional) constant-pressure T(s) line
+  f = 0.0
+
+guesses:
+  # Provide physically reasonable guesses so PropsSI calls never see nonsense states
+  ? h1 = 295000.0
+  ? s1 = 6800.0
+
+  ? s2s = 6800.0
+  ? h2s = 570000.0
+  ? T2s = 565.0
+
+  ? W_dot_s_c = 137000.0
+  ? W_dot_c = 185000.0
+
+  ? h2 = 663000.0
+  ? T2 = 660.0
+  ? s2 = 7200.0
+  ? S_dot_gen_c = 200.0
+
+  ? h3 = 295000.0
+  ? s3 = 6000.0
+
+  ? Q_dot = 185000.0
+  ? S_dot_gen_ac = 50.0
+  ? S_dot_gen_total = 250.0
+
+  ? W_dot_c_kW = 185.0
+  ? W_dot_s_c_kW = 137.0
+  ? Q_dot_kW = 185.0
+
+  ? s_line = 6000.0
+  ? T_line = 293.15
+
+equations:
+  # =========================
+  # State 1 (compressor inlet)
+  # =========================
+  T1 = T_amb
+  P1 = P_atm
+  h1 = PropsSI("HMASS","T",T1,"P",P1,fluid)
+  s1 = PropsSI("SMASS","T",T1,"P",P1,fluid)
+
+  # =========================
+  # State 2s (reversible compressor exit at P2)
+  # =========================
+  s2s = s1
+  h2s = PropsSI("HMASS","P",P2,"SMASS",s2s,fluid)
+  T2s = PropsSI("T","P",P2,"SMASS",s2s,fluid)
+
+  # =========================
+  # Compressor power + actual exit (state 2)
+  # =========================
+  W_dot_s_c = m_dot * (h2s - h1)
+  W_dot_c = W_dot_s_c / eta_c
+
+  h2 = h1 + W_dot_c / m_dot
+  T2 = PropsSI("T","P",P2,"HMASS",h2,fluid)
+  s2 = PropsSI("SMASS","P",P2,"HMASS",h2,fluid)
+
+  S_dot_gen_c = m_dot * (s2 - s1)
+
+  # =========================
+  # State 3 (aftercooler exit)
+  # =========================
+  T3 = T_amb
+  P3 = P2
+  h3 = PropsSI("HMASS","T",T3,"P",P3,fluid)
+  s3 = PropsSI("SMASS","T",T3,"P",P3,fluid)
+
+  # Aftercooler heat transfer (positive means heat rejected from air)
+  Q_dot = m_dot * (h2 - h3)
+
+  # Entropy balance on aftercooler:
+  # m_dot*s2 + S_dot_gen_ac = Q_dot/T_amb + m_dot*s3
+  S_dot_gen_ac = Q_dot / T_amb + m_dot * (s3 - s2)
+
+  S_dot_gen_total = S_dot_gen_c + S_dot_gen_ac
+
+  # Convenience outputs
+  W_dot_c_kW = W_dot_c * W_to_kW
+  W_dot_s_c_kW = W_dot_s_c * W_to_kW
+  Q_dot_kW = Q_dot * W_to_kW
+
+  # =========================
+  # Optional: constant-pressure line T(s) at P2 (for plotting/parametric tables)
+  # s_line interpolates between s3 (f=0) and s2 (f=1)
+  # =========================
+  s_line = s3 + f * (s2 - s3)
+  T_line = PropsSI("T","P",P2,"SMASS",s_line,fluid)
+
+report:
+  fluid
+  P_atm, T_amb, P2, eta_c, m_dot
+  T1, P1, h1, s1
+  T2s, h2s, s2s
+  T2, h2, s2
+  W_dot_s_c, W_dot_c, W_dot_s_c_kW, W_dot_c_kW
+  S_dot_gen_c
+  T3, P3, h3, s3
+  Q_dot, Q_dot_kW
+  S_dot_gen_ac
+  S_dot_gen_total
+  f, s_line, T_line
