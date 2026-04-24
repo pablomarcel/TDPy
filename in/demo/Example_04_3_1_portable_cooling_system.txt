@@ -1,0 +1,125 @@
+title: Example 4.3-1 Portable Cooling System (TDPy)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 4.3-1 Portable Cooling System
+#
+# Rules followed:
+# - Inline equations
+# - Unrolled primitives (no convert(), converttemp(), etc.)
+# - No scientific notation
+# - No hyphens in report variable names
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  # ---- inputs (SI) ----
+  Vol = 0.002                     # m^3  (2 liter)
+  x_charge = 0.05                 # initial quality
+  T_charge = 293.15               # K    (20 C)
+  T_rv = 303.15                   # K    (30 C)
+
+  # ---- conversions (unrolled) ----
+  J_per_Whr = 3600.0
+  Jpkg_to_Whrpkg = 0.0002777777777777778
+
+  # Ice latent heat
+  Dh_fus_ice = 333600.0           # J/kg (333.6 J/g)
+
+  # Vapor compression comparison
+  COP = 3.0
+  ED_bat = 468000.0               # J/kg (130 W hr/kg)
+
+  # numeric guard
+  eps = 0.000000001
+
+guesses:
+  # state 1 (two-phase at T_charge, x=0.05)
+  ? P1 = 600000.0
+  ? rho1 = 700.0
+  ? v1 = 0.0025
+  ? u1 = 200000.0
+
+  # state 2 (sat vapor at T_rv)
+  ? P2 = 750000.0
+  ? rho2 = 40.0
+  ? v2 = 0.02
+  ? u2 = 240000.0
+  ? h_out = 260000.0
+
+  # masses and energy
+  ? m1 = 0.8
+  ? m2 = 0.1
+  ? m_out = 0.7
+  ? Q_in = 200000.0
+
+  # outputs
+  ? CD = 250000.0
+  ? CD_Whrpkg = 70.0
+  ? CD_ice_Whrpkg = 92.0
+  ? CD_vc = 1400000.0
+  ? CD_vc_Whrpkg = 390.0
+
+equations:
+  # --------------------------
+  # State 1 (initial charge)
+  # --------------------------
+  P1 = PropsSI("P","T",T_charge,"Q",x_charge,"R134a")
+  rho1 = PropsSI("DMASS","T",T_charge,"Q",x_charge,"R134a")
+  v1 = 1.0 / max(eps, rho1)
+  u1 = PropsSI("UMASS","T",T_charge,"Q",x_charge,"R134a")
+
+  # --------------------------
+  # State 2 (relief valve opens; tank contains only vapor)
+  # --------------------------
+  P2 = PropsSI("P","T",T_rv,"Q",1.0,"R134a")
+  rho2 = PropsSI("DMASS","T",T_rv,"Q",1.0,"R134a")
+  v2 = 1.0 / max(eps, rho2)
+  u2 = PropsSI("UMASS","T",T_rv,"Q",1.0,"R134a")
+
+  # saturated vapor leaves at T_rv
+  h_out = PropsSI("HMASS","T",T_rv,"Q",1.0,"R134a")
+
+  # --------------------------
+  # Mass balance
+  # --------------------------
+  m1 = Vol / max(eps, v1)
+  m2 = Vol / max(eps, v2)
+  m_out + m2 - m1 = 0.0
+
+  # --------------------------
+  # Energy balance (no shaft work)
+  # --------------------------
+  Q_in = m_out * h_out + m2 * u2 - m1 * u1
+
+  # --------------------------
+  # Cooling density
+  # --------------------------
+  CD = Q_in / max(eps, m1)
+  CD_Whrpkg = CD * Jpkg_to_Whrpkg
+
+  # --------------------------
+  # Ice comparison
+  # --------------------------
+  CD_ice_Whrpkg = Dh_fus_ice * Jpkg_to_Whrpkg
+
+  # --------------------------
+  # Vapor compression + batteries comparison
+  # --------------------------
+  CD_vc = ED_bat * COP
+  CD_vc_Whrpkg = CD_vc * Jpkg_to_Whrpkg
+
+report:
+  Vol, x_charge, T_charge, T_rv
+  P1, rho1, v1, u1
+  P2, rho2, v2, u2
+  h_out
+  m1, m2, m_out
+  Q_in
+  CD, CD_Whrpkg
+  Dh_fus_ice, CD_ice_Whrpkg
+  COP, ED_bat, CD_vc, CD_vc_Whrpkg

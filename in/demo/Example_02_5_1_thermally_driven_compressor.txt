@@ -1,0 +1,151 @@
+title: Example 2.5-1 Thermally Driven Compressor (TDPy)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 2.5-1 Thermally-Driven Compressor
+#
+# Rules followed:
+# - inline equations (no procedures)
+# - primitives unrolled (no convert(), converttemp(), etc.)
+# - no scientific notation
+# - report contains variable names only
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 2000
+  max_restarts: 2
+
+given:
+  # Temperatures (C -> K unrolled)
+  T_amb  = 293.15          # K  (20 C)
+  T_high = 973.15          # K  (700 C)
+
+  # Frequency (10e3 Hz unrolled)
+  f = 10000.0              # 1/s
+
+  # Pressures (kPa -> Pa unrolled)
+  P_low = 100000.0         # Pa (100 kPa)
+  DELTAP = 50000.0         # Pa (50 kPa)
+
+  # Cavity volume (100 micron^3 -> m^3 unrolled)
+  # 1 micron = 0.000001 m => 1 micron^3 = 0.000000000000000001 m^3
+  # 100 micron^3 = 0.0000000000000001 m^3
+  Vol = 0.0000000000000001
+
+  # Ideal-gas constant for air
+  R_air = 287.0            # J/kg-K
+
+  # Unit conversion for reporting
+  sec_per_hr = 3600.0
+  microg_per_kg = 1000000000.0
+  kgps_to_microgphr = 3600000000000.0   # microg/hr per (kg/s)
+
+equations:
+  # ----------------
+  # State 1 (low T, low P)
+  # ----------------
+  P1 - P_low = 0.0
+  T1 - T_amb = 0.0
+  v1 - (R_air * T1 / P1) = 0.0
+  m1 - (Vol / v1) = 0.0
+
+  # ----------------
+  # State 2 (low T, high P valve ready to open)
+  # ----------------
+  P2 - (P_low + DELTAP) = 0.0
+  m2 - m1 = 0.0
+  v2 - (Vol / m2) = 0.0
+  T2 - (P2 * v2 / R_air) = 0.0
+
+  # ----------------
+  # State 3 (high T, high P; mass leaves)
+  # ----------------
+  P3 - P2 = 0.0
+  T3 - T_high = 0.0
+  v3 - (R_air * T3 / P3) = 0.0
+  m3 - (Vol / v3) = 0.0
+  m_out + m3 - m2 = 0.0
+
+  # ----------------
+  # State 4 (high T, low P valve ready to open)
+  # ----------------
+  P4 - P_low = 0.0
+  m4 - m3 = 0.0
+  v4 - (Vol / m4) = 0.0
+  T4 - (P4 * v4 / R_air) = 0.0
+
+  # ----------------
+  # Cycle metrics
+  # ----------------
+  m_in - (m1 - m4) = 0.0
+  t_cycle - (1.0 / f) = 0.0
+  m_dot_avg - (m_in / t_cycle) = 0.0
+  m_dot_avg_microgphr - (m_dot_avg * kgps_to_microgphr) = 0.0
+
+guesses:
+  # State 1
+  ? P1 = 100000.0
+  ? T1 = 293.15
+  ? v1 = 0.84
+  ? m1 = 0.00000000000000012
+
+  # State 2
+  ? P2 = 150000.0
+  ? m2 = 0.00000000000000012
+  ? v2 = 0.84
+  ? T2 = 440.0
+
+  # State 3
+  ? P3 = 150000.0
+  ? T3 = 973.15
+  ? v3 = 1.86
+  ? m3 = 0.00000000000000005
+  ? m_out = 0.00000000000000006
+
+  # State 4
+  ? P4 = 100000.0
+  ? m4 = 0.00000000000000005
+  ? v4 = 1.86
+  ? T4 = 650.0
+
+  # Cycle metrics
+  ? m_in = 0.00000000000000006
+  ? t_cycle = 0.0001
+  ? m_dot_avg = 0.0000000000006
+  ? m_dot_avg_microgphr = 2.0
+
+report:
+  T_amb
+  T_high
+  f
+  P_low
+  DELTAP
+  Vol
+  R_air
+
+  P1
+  T1
+  v1
+  m1
+
+  P2
+  T2
+  v2
+  m2
+
+  P3
+  T3
+  v3
+  m3
+  m_out
+
+  P4
+  T4
+  v4
+  m4
+
+  t_cycle
+  m_in
+  m_dot_avg
+  m_dot_avg_microgphr

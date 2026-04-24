@@ -1,0 +1,110 @@
+title: Example 3.3-1 Hot Steam Equilibrating with Cold Liquid Water (TDPy, PropsSI)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 3.3-1  Hot Steam Equilibrating with Cold Liquid Water
+#
+# Rules satisfied:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp(), etc.)
+# - No scientific notation
+# - Report list contains ONLY variable names (no hyphen bullets)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  # Inputs (unrolled)
+  T_s1 = 873.15            # K   (600 C)
+  P1   = 20000000.0        # Pa  (20000 kPa)
+
+  T_liq1 = 313.15          # K   (40 C)
+
+  Vol = 10.0               # m^3  tank volume
+  Vol_liq1 = 1.0           # m^3  initial liquid volume
+
+  # guards
+  eps = 0.000000001
+
+guesses:
+  # Final mixed state (good starting point; ends up ~3.25 MPa, quality ~0.08)
+  ? u2  = 1150000.0        # J/kg
+  ? P2  = 3250000.0        # Pa
+  ? T2  = 507.0            # K
+  ? x2  = 0.08             # quality
+
+equations:
+  # -----------------------
+  # Saturation at P1 (for info only)
+  # -----------------------
+  T_sat = PropsSI("T","P",P1,"Q",0.0,"Water")
+  T_sat_C = T_sat - 273.15
+
+  # -----------------------
+  # Initial steam (state s1) at (T_s1, P1)
+  # -----------------------
+  u_s1 = PropsSI("UMASS","T",T_s1,"P",P1,"Water")
+  rho_s1 = PropsSI("DMASS","T",T_s1,"P",P1,"Water")
+  v_s1 = 1.0 / max(eps, rho_s1)
+
+  # -----------------------
+  # Initial liquid (state liq1) at (T_liq1, P1)
+  # -----------------------
+  u_liq1 = PropsSI("UMASS","T",T_liq1,"P",P1,"Water")
+  rho_liq1 = PropsSI("DMASS","T",T_liq1,"P",P1,"Water")
+  v_liq1 = 1.0 / max(eps, rho_liq1)
+
+  # -----------------------
+  # Masses at state 1
+  # -----------------------
+  m_liq1 = Vol_liq1 / v_liq1
+  Vol_s1 = Vol - Vol_liq1
+  m_s1 = Vol_s1 / v_s1
+  m1 = m_s1 + m_liq1
+
+  # -----------------------
+  # Final (state 2) — rigid, adiabatic tank
+  # -----------------------
+  m2 = m1
+  v2 = Vol / m2
+  rho2 = 1.0 / max(eps, v2)
+
+  # Energy balance (residual form so u2 remains an unknown for the solver)
+  m2 * u2 - m_s1 * u_s1 - m_liq1 * u_liq1 = 0.0
+
+  # State 2 properties from (rho2, u2)
+  P2 - PropsSI("P","DMASS",rho2,"UMASS",u2,"Water") = 0.0
+  T2 - PropsSI("T","DMASS",rho2,"UMASS",u2,"Water") = 0.0
+  x2 - PropsSI("Q","DMASS",rho2,"UMASS",u2,"Water") = 0.0
+
+  # Convenience outputs (unrolled unit conversions)
+  P2_kPa = P2 * 0.001
+  T2_C = T2 - 273.15
+
+report:
+  T_s1
+  P1
+  T_liq1
+  Vol
+  Vol_liq1
+  T_sat
+  T_sat_C
+  u_s1
+  v_s1
+  u_liq1
+  v_liq1
+  m_s1
+  m_liq1
+  m1
+  m2
+  v2
+  rho2
+  u2
+  P2
+  P2_kPa
+  T2
+  T2_C
+  x2

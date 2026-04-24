@@ -1,0 +1,28 @@
+{
+  "problem_type": "thermo_props",
+  "backend": "coolprop",
+  "fluid": "R134a",
+
+  "states": [
+    {
+      "id": "sat_vapor_-10C",
+      "given": { "T_C": -10, "x": 1.0 },
+      "ask": ["T", "P", "Q", "Hmass", "Smass", "Dmass", "Cpmass", "Cvmass", "A"]
+    },
+    {
+      "id": "sat_liquid_35C",
+      "given": { "T_C": 35, "x": 0.0 },
+      "ask": ["T", "P", "Q", "Hmass", "Smass", "Dmass", "Cpmass", "Cvmass", "A"]
+    },
+    {
+      "id": "superheated",
+      "given": { "P_bar": 8.0, "T_C": 60.0 },
+      "ask": ["T", "P", "Q", "Hmass", "Smass", "Dmass", "Cpmass", "Cvmass", "A"]
+    }
+  ],
+
+  "meta": {
+    "title": "R134a thermo batch states",
+    "note": "Three states: saturated vapor at -10C, saturated liquid at 35C, and a superheated point at 8 bar & 60C."
+  }
+}

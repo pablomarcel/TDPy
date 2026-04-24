@@ -1,0 +1,334 @@
+title: Example 4.5-3 Emptying a Butane Tank (TDPy, explicit time stepping, PropsSI)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 4.5-3 Emptying a Butane Tank
+#
+# Notes for TDPy:
+# - EES uses Integral(dUdt, time, 0, 20 min). TDPy does not do integrals, so we unroll a fixed-step explicit Euler march.
+# - State of tank computed from (rho, u) using PropsSI with inputs (DMASS, UMASS).
+# - Outflow enthalpy per the EES lines: saturated liquid leaves, h_out = h(P, x=0).
+# - No scientific notation anywhere.
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 2000
+  max_restarts: 1
+
+given:
+  # inputs (conversions unrolled)
+  Vol = 0.00054                 # m^3   (0.54 liter)
+  m_init = 0.23                 # kg
+  T_init = 298.15               # K     (25 C)
+  m_dot_out = 0.000035          # kg/s  (0.035 g/s)
+
+  # time integration settings (20 min total)
+  t_end = 1200.0                # s     (20 min)
+  dt = 120.0                    # s     (2 min)
+  n_step = 10.0                 # steps (t_end = n_step*dt)
+
+  # constants
+  K_offset = 273.15
+  Pa_per_kPa = 1000.0
+  sec_per_min = 60.0
+  eps = 0.000000001
+
+  # fluid (string literal)
+  fluid = 'n-Butane'
+
+guesses:
+  # initial state guesses (rough)
+  ? rho_init = 500.0
+  ? u_init = 200000.0
+  ? P_init = 200000.0
+
+  # last step guesses (rough)
+  ? T10 = 280.0
+  ? P10 = 150000.0
+
+equations:
+  # -------------------------
+  # Initial tank state (t = 0)
+  # -------------------------
+  v_init = Vol / m_init
+  rho_init = 1.0 / max(eps, v_init)
+
+  P_init = PropsSI("P","T",T_init,"DMASS",rho_init,"n-Butane")
+  u_init = PropsSI("UMASS","T",T_init,"DMASS",rho_init,"n-Butane")
+  U_init = m_init * u_init
+
+  # -------------------------
+  # Step 0 (t0 = 0)
+  # -------------------------
+  t0 = 0.0
+  m0 = m_init - m_dot_out * t0
+  U0 = U_init
+
+  v0 = Vol / max(eps, m0)
+  rho0 = 1.0 / max(eps, v0)
+  u0 = U0 / max(eps, m0)
+
+  P0 = PropsSI("P","DMASS",rho0,"UMASS",u0,"n-Butane")
+  T0 = PropsSI("T","DMASS",rho0,"UMASS",u0,"n-Butane")
+
+  T0_C = T0 - K_offset
+  P0_kPa = P0 / Pa_per_kPa
+
+  h_out0 = PropsSI("HMASS","P",P0,"Q",0.0,"n-Butane")
+  dUdt0 = -m_dot_out * h_out0
+
+  time0_min = t0 / sec_per_min
+
+  # -------------------------
+  # Step 1 (t1 = 120 s)
+  # -------------------------
+  t1 = 120.0
+  m1 = m_init - m_dot_out * t1
+  U1 = U0 + dt * dUdt0
+
+  v1 = Vol / max(eps, m1)
+  rho1 = 1.0 / max(eps, v1)
+  u1 = U1 / max(eps, m1)
+
+  P1 = PropsSI("P","DMASS",rho1,"UMASS",u1,"n-Butane")
+  T1 = PropsSI("T","DMASS",rho1,"UMASS",u1,"n-Butane")
+
+  T1_C = T1 - K_offset
+  P1_kPa = P1 / Pa_per_kPa
+
+  h_out1 = PropsSI("HMASS","P",P1,"Q",0.0,"n-Butane")
+  dUdt1 = -m_dot_out * h_out1
+
+  time1_min = t1 / sec_per_min
+
+  # -------------------------
+  # Step 2 (t2 = 240 s)
+  # -------------------------
+  t2 = 240.0
+  m2 = m_init - m_dot_out * t2
+  U2 = U1 + dt * dUdt1
+
+  v2 = Vol / max(eps, m2)
+  rho2 = 1.0 / max(eps, v2)
+  u2 = U2 / max(eps, m2)
+
+  P2 = PropsSI("P","DMASS",rho2,"UMASS",u2,"n-Butane")
+  T2 = PropsSI("T","DMASS",rho2,"UMASS",u2,"n-Butane")
+
+  T2_C = T2 - K_offset
+  P2_kPa = P2 / Pa_per_kPa
+
+  h_out2 = PropsSI("HMASS","P",P2,"Q",0.0,"n-Butane")
+  dUdt2 = -m_dot_out * h_out2
+
+  time2_min = t2 / sec_per_min
+
+  # -------------------------
+  # Step 3 (t3 = 360 s)
+  # -------------------------
+  t3 = 360.0
+  m3 = m_init - m_dot_out * t3
+  U3 = U2 + dt * dUdt2
+
+  v3 = Vol / max(eps, m3)
+  rho3 = 1.0 / max(eps, v3)
+  u3 = U3 / max(eps, m3)
+
+  P3 = PropsSI("P","DMASS",rho3,"UMASS",u3,"n-Butane")
+  T3 = PropsSI("T","DMASS",rho3,"UMASS",u3,"n-Butane")
+
+  T3_C = T3 - K_offset
+  P3_kPa = P3 / Pa_per_kPa
+
+  h_out3 = PropsSI("HMASS","P",P3,"Q",0.0,"n-Butane")
+  dUdt3 = -m_dot_out * h_out3
+
+  time3_min = t3 / sec_per_min
+
+  # -------------------------
+  # Step 4 (t4 = 480 s)
+  # -------------------------
+  t4 = 480.0
+  m4 = m_init - m_dot_out * t4
+  U4 = U3 + dt * dUdt3
+
+  v4 = Vol / max(eps, m4)
+  rho4 = 1.0 / max(eps, v4)
+  u4 = U4 / max(eps, m4)
+
+  P4 = PropsSI("P","DMASS",rho4,"UMASS",u4,"n-Butane")
+  T4 = PropsSI("T","DMASS",rho4,"UMASS",u4,"n-Butane")
+
+  T4_C = T4 - K_offset
+  P4_kPa = P4 / Pa_per_kPa
+
+  h_out4 = PropsSI("HMASS","P",P4,"Q",0.0,"n-Butane")
+  dUdt4 = -m_dot_out * h_out4
+
+  time4_min = t4 / sec_per_min
+
+  # -------------------------
+  # Step 5 (t5 = 600 s)
+  # -------------------------
+  t5 = 600.0
+  m5 = m_init - m_dot_out * t5
+  U5 = U4 + dt * dUdt4
+
+  v5 = Vol / max(eps, m5)
+  rho5 = 1.0 / max(eps, v5)
+  u5 = U5 / max(eps, m5)
+
+  P5 = PropsSI("P","DMASS",rho5,"UMASS",u5,"n-Butane")
+  T5 = PropsSI("T","DMASS",rho5,"UMASS",u5,"n-Butane")
+
+  T5_C = T5 - K_offset
+  P5_kPa = P5 / Pa_per_kPa
+
+  h_out5 = PropsSI("HMASS","P",P5,"Q",0.0,"n-Butane")
+  dUdt5 = -m_dot_out * h_out5
+
+  time5_min = t5 / sec_per_min
+
+  # -------------------------
+  # Step 6 (t6 = 720 s)
+  # -------------------------
+  t6 = 720.0
+  m6 = m_init - m_dot_out * t6
+  U6 = U5 + dt * dUdt5
+
+  v6 = Vol / max(eps, m6)
+  rho6 = 1.0 / max(eps, v6)
+  u6 = U6 / max(eps, m6)
+
+  P6 = PropsSI("P","DMASS",rho6,"UMASS",u6,"n-Butane")
+  T6 = PropsSI("T","DMASS",rho6,"UMASS",u6,"n-Butane")
+
+  T6_C = T6 - K_offset
+  P6_kPa = P6 / Pa_per_kPa
+
+  h_out6 = PropsSI("HMASS","P",P6,"Q",0.0,"n-Butane")
+  dUdt6 = -m_dot_out * h_out6
+
+  time6_min = t6 / sec_per_min
+
+  # -------------------------
+  # Step 7 (t7 = 840 s)
+  # -------------------------
+  t7 = 840.0
+  m7 = m_init - m_dot_out * t7
+  U7 = U6 + dt * dUdt6
+
+  v7 = Vol / max(eps, m7)
+  rho7 = 1.0 / max(eps, v7)
+  u7 = U7 / max(eps, m7)
+
+  P7 = PropsSI("P","DMASS",rho7,"UMASS",u7,"n-Butane")
+  T7 = PropsSI("T","DMASS",rho7,"UMASS",u7,"n-Butane")
+
+  T7_C = T7 - K_offset
+  P7_kPa = P7 / Pa_per_kPa
+
+  h_out7 = PropsSI("HMASS","P",P7,"Q",0.0,"n-Butane")
+  dUdt7 = -m_dot_out * h_out7
+
+  time7_min = t7 / sec_per_min
+
+  # -------------------------
+  # Step 8 (t8 = 960 s)
+  # -------------------------
+  t8 = 960.0
+  m8 = m_init - m_dot_out * t8
+  U8 = U7 + dt * dUdt7
+
+  v8 = Vol / max(eps, m8)
+  rho8 = 1.0 / max(eps, v8)
+  u8 = U8 / max(eps, m8)
+
+  P8 = PropsSI("P","DMASS",rho8,"UMASS",u8,"n-Butane")
+  T8 = PropsSI("T","DMASS",rho8,"UMASS",u8,"n-Butane")
+
+  T8_C = T8 - K_offset
+  P8_kPa = P8 / Pa_per_kPa
+
+  h_out8 = PropsSI("HMASS","P",P8,"Q",0.0,"n-Butane")
+  dUdt8 = -m_dot_out * h_out8
+
+  time8_min = t8 / sec_per_min
+
+  # -------------------------
+  # Step 9 (t9 = 1080 s)
+  # -------------------------
+  t9 = 1080.0
+  m9 = m_init - m_dot_out * t9
+  U9 = U8 + dt * dUdt8
+
+  v9 = Vol / max(eps, m9)
+  rho9 = 1.0 / max(eps, v9)
+  u9 = U9 / max(eps, m9)
+
+  P9 = PropsSI("P","DMASS",rho9,"UMASS",u9,"n-Butane")
+  T9 = PropsSI("T","DMASS",rho9,"UMASS",u9,"n-Butane")
+
+  T9_C = T9 - K_offset
+  P9_kPa = P9 / Pa_per_kPa
+
+  h_out9 = PropsSI("HMASS","P",P9,"Q",0.0,"n-Butane")
+  dUdt9 = -m_dot_out * h_out9
+
+  time9_min = t9 / sec_per_min
+
+  # -------------------------
+  # Step 10 (t10 = 1200 s)
+  # -------------------------
+  t10 = 1200.0
+  m10 = m_init - m_dot_out * t10
+  U10 = U9 + dt * dUdt9
+
+  v10 = Vol / max(eps, m10)
+  rho10 = 1.0 / max(eps, v10)
+  u10 = U10 / max(eps, m10)
+
+  P10 = PropsSI("P","DMASS",rho10,"UMASS",u10,"n-Butane")
+  T10 = PropsSI("T","DMASS",rho10,"UMASS",u10,"n-Butane")
+
+  T10_C = T10 - K_offset
+  P10_kPa = P10 / Pa_per_kPa
+
+  h_out10 = PropsSI("HMASS","P",P10,"Q",0.0,"n-Butane")
+  dUdt10 = -m_dot_out * h_out10
+
+  time10_min = t10 / sec_per_min
+
+  # summary values
+  m_out_total = m_init - m10
+  m_out_check = m_dot_out * t_end
+  mass_check = m_out_total - m_out_check
+
+report:
+  Vol
+  m_init
+  T_init
+  m_dot_out
+  dt
+  t_end
+
+  P_init
+  u_init
+  U_init
+
+  time0_min, m0, T0_C, P0_kPa
+  time1_min, m1, T1_C, P1_kPa
+  time2_min, m2, T2_C, P2_kPa
+  time3_min, m3, T3_C, P3_kPa
+  time4_min, m4, T4_C, P4_kPa
+  time5_min, m5, T5_C, P5_kPa
+  time6_min, m6, T6_C, P6_kPa
+  time7_min, m7, T7_C, P7_kPa
+  time8_min, m8, T8_C, P8_kPa
+  time9_min, m9, T9_C, P9_kPa
+  time10_min, m10, T10_C, P10_kPa
+
+  m_out_total
+  m_out_check
+  mass_check

@@ -1,0 +1,21 @@
+{
+  "problem_type": "equations",
+  "backend": "scipy",
+  "method": "hybr",
+  "tol": 1e-10,
+  "max_iter": 200,
+
+  "constants": {
+    "fluid": "HEOS::Air",
+    "P": 101325.0,
+    "rho_target": 1.18
+  },
+
+  "variables": {
+    "T": { "guess": 300.0 }
+  },
+
+  "equations": [
+    "PropsSI('Dmass','T',T,'P',P,fluid) - rho_target"
+  ]
+}

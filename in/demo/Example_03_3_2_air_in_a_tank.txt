@@ -1,0 +1,101 @@
+title: Example 3.3-2 Air in a Tank (TDPy, PropsSI Air)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  # fluid (use plain string, NOT F$)
+  fluid = "Air"
+
+  # tank + air data
+  c_s   = 471.9
+  rho_s = 7902.0
+
+  # NOTE: book variable R_t is used as a radius in the sphere-volume formulas
+  R_t   = 0.1
+  th_t  = 0.00035
+
+  # initial temperatures
+  T_t1 = 293.15
+  T_a1 = 473.15
+
+  # initial air pressure
+  psi_to_Pa = 6894.757293168
+  P_a1 = 2413165.0526088
+
+  # constants
+  pi = 3.141592653589793
+  P_a1_psi = 350.0
+  Pa_per_psi = 6894.757293168
+  eps = 0.000000001
+
+guesses:
+  ? rho_a1 = 17.76718106
+  ? v_a1   = 0.056282
+  ? u_a1   = 340000.0
+
+  ? Vol_a  = 0.004188790204786
+  ? m_a    = 0.0744
+
+  ? Vol_t  = 0.00004398
+  ? m_t    = 0.347
+
+  ? v_a2   = 0.056282
+  ? rho_a2 = 17.76718106
+  ? T_t2   = 336.8
+  ? T_a2   = 336.8
+  ? u_a2   = 241000.0
+  ? P_a2   = 1717751.219949
+
+  ? T_2_C     = 63.65
+  ? P_a2_psi  = 249.1
+
+equations:
+  # --- state 1 (initial air in rigid tank) ---
+  rho_a1 - PropsSI("DMASS","T",T_a1,"P",P_a1,fluid) = 0.0
+  v_a1 * rho_a1 - 1.0 = 0.0
+  u_a1 - PropsSI("UMASS","T",T_a1,"P",P_a1,fluid) = 0.0
+
+  # --- geometry ---
+  Vol_a - (4.0 * pi * R_t * R_t * R_t / 3.0) = 0.0
+  m_a - (Vol_a / v_a1) = 0.0
+
+  Vol_t - (4.0 * pi * ((R_t + th_t) * (R_t + th_t) * (R_t + th_t) - R_t * R_t * R_t) / 3.0) = 0.0
+  m_t - (Vol_t * rho_s) = 0.0
+
+  # --- state 2 (final equilibrium) ---
+  v_a2 - v_a1 = 0.0
+  rho_a2 * v_a2 - 1.0 = 0.0
+
+  T_a2 - T_t2 = 0.0
+
+  # air properties at state 2 from (T, rho)
+  u_a2 - PropsSI("UMASS","T",T_a2,"DMASS",rho_a2,fluid) = 0.0
+  P_a2 - PropsSI("P","T",T_a2,"DMASS",rho_a2,fluid) = 0.0
+
+  # energy balance (closed, rigid, no heat/work)
+  m_t * c_s * (T_t2 - T_t1) + m_a * (u_a2 - u_a1) = 0.0
+
+  # report-friendly unit conversions
+  T_2_C - (T_a2 - 273.15) = 0.0
+  P_a2_psi - (P_a2 / Pa_per_psi) = 0.0
+
+report:
+  fluid
+  c_s, rho_s
+  R_t, th_t
+  T_t1, T_a1, P_a1, P_a1_psi
+
+  Vol_a, Vol_t
+  m_a, m_t
+
+  rho_a1, v_a1, u_a1
+  T_t2, T_a2
+  rho_a2, v_a2, u_a2
+  P_a2
+  T_2_C
+  P_a2_psi

@@ -1,0 +1,22 @@
+{
+  "problem_type": "equations",
+  "backend": "auto",
+  "method": "hybr",
+  "tol": 1e-10,
+  "max_iter": 200,
+
+  "constants": {
+    "r": 2.0,
+    "k": 1.0
+  },
+
+  "variables": {
+    "x": { "guess": 1.0 },
+    "y": { "guess": 1.7 }
+  },
+
+  "equations": [
+    "x*x + y*y - r*r",
+    "y - k*x"
+  ]
+}

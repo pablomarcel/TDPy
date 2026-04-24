@@ -1,0 +1,46 @@
+title: CoolProp AbstractState Test — Fugacity of Nitrogen @ 1 MPa, 300 K
+
+given:
+  # Test conditions (SI)
+  P = 1000000          # Pa   (1 MPa)
+  T = 300              # K
+
+equations:
+  # --- Baseline sanity (PropsSI) ---
+  rho = PropsSI("D","P",P,"T",T,"HEOS::Nitrogen")     # kg/m^3
+  Z   = PropsSI("Z","P",P,"T",T,"HEOS::Nitrogen")     # compressibility factor (dimensionless)
+
+  # --- AbstractState (new backend wrappers) ---
+  # Fugacity coefficient (dimensionless)
+  phi    = FugacityCoeffSI("P",P,"T",T,"HEOS::Nitrogen")
+  ln_phi = ASPropsSI("ln_phi","P",P,"T",T,"HEOS::Nitrogen")
+
+  # Fugacity (Pa)
+  f  = FugacitySI("P",P,"T",T,"HEOS::Nitrogen")
+  f2 = ASPropsSI("fugacity","P",P,"T",T,"HEOS::Nitrogen")
+
+  # --- Consistency checks ---
+  # For a pure fluid: fugacity f = phi * P
+  f_from_phi = phi * P
+  resid_f    = f - f_from_phi
+
+  # ln_phi should equal ln(phi)
+  ln_phi_check = ln(phi)
+  resid_lnphi  = ln_phi - ln_phi_check
+
+  # Convenience reporting
+  f_bar = f / 100000   # bar
+
+report:
+  P, T
+  rho, Z
+  phi, ln_phi
+  f, f2, f_bar
+  f_from_phi, resid_f
+  ln_phi_check, resid_lnphi
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 60

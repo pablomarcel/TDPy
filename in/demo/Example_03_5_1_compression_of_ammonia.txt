@@ -1,0 +1,94 @@
+title: Example 3.5-1 Compression of Ammonia (PV work from polytropic fit, no tables)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 3.5-1  Compression of Ammonia
+#
+# EES original uses:
+# - Interpolate('PV Data', ...)  (requires an EES table)
+# - Integral(P,V,V1,V2)
+#
+# TDPy version (this file):
+# - No Interpolate(), no Integral()
+# - Uses the polytropic fit P = C * V^(-n) provided in the example
+# - Computes:
+#     pressure at V_in3 (in Pa and psi)
+#     compression work W (J) from analytic integral of the polytropic fit
+#     W_ftlbf (ft-lbf)
+#
+# Rules satisfied:
+# - inline equations (no procedures)
+# - unrolled conversions (no convert()/converttemp())
+# - no scientific notation in the INPUT text
+# - report names contain only variable names (no hyphens)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 2000
+  max_restarts: 2
+
+given:
+  # ----- volumes (in^3) -----
+  V_in3 = 50.0
+  V1_in3 = 80.0
+  V2_in3 = 32.5
+
+  # ----- conversion constants (unrolled) -----
+  in3_to_m3 = 0.000016387064      # 1 in^3 = (0.0254 m)^3 = 0.000016387064 m^3
+  psi_to_Pa = 6894.757293168      # 1 psi = 6894.757293168 Pa
+  J_to_ftlbf = 0.737562149277     # 1 J = 0.737562149277 ft-lbf
+
+  # ----- polytropic fit (given by example) -----
+  C = 241.034
+  n = 1.13941
+
+guesses:
+  ? V = 0.000819
+  ? V1 = 0.001311
+  ? V2 = 0.000533
+  ? P_poly = 800000.0
+  ? P_poly_psi = 115.0
+  ? W = 600.0
+  ? W_ftlbf = 440.0
+  ? W2 = 600.0
+  ? W2_ftlbf = 440.0
+
+equations:
+  # ----- convert volumes to SI -----
+  V  - (V_in3  * in3_to_m3) = 0.0
+  V1 - (V1_in3 * in3_to_m3) = 0.0
+  V2 - (V2_in3 * in3_to_m3) = 0.0
+
+  # ----- pressure at V_in3 from polytropic fit -----
+  P_poly - (C / (V ** n)) = 0.0
+  P_poly_psi - (P_poly / psi_to_Pa) = 0.0
+
+  # ----- compression work from polytropic fit (positive for compression work input) -----
+  # W = ∫_{V2}^{V1} P dV  with  P = C * V^(-n)
+  # W = C * (V2^(1-n) - V1^(1-n)) / (n - 1)
+  W - (C * ((1.0 / (V2 ** (n - 1.0))) - (1.0 / (V1 ** (n - 1.0)))) / (n - 1.0)) = 0.0
+  W_ftlbf - (W * J_to_ftlbf) = 0.0
+
+  # ----- same work using the book's closed form (kept as separate variable for comparison) -----
+  W2 - (C * ((1.0 / (V2 ** (n - 1.0))) - (1.0 / (V1 ** (n - 1.0)))) / (n - 1.0)) = 0.0
+  W2_ftlbf - (W2 * J_to_ftlbf) = 0.0
+
+report:
+  V_in3
+  V1_in3
+  V2_in3
+  in3_to_m3
+  psi_to_Pa
+  J_to_ftlbf
+  C
+  n
+  V
+  V1
+  V2
+  P_poly
+  P_poly_psi
+  W
+  W_ftlbf
+  W2
+  W2_ftlbf

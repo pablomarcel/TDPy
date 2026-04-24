@@ -1,0 +1,98 @@
+title: Example 2.4-2 — Liquid Oxygen Tank (TDPy)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Conversion rules followed:
+# - inline equations (no procedures)
+# - unrolled primitives (no convert(), converttemp(), etc.)
+# - no scientific notation
+# - no hyphens in report variables
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  # tank + initial condition
+  Vol = 0.065                 # m^3   (65 liter)
+  Vol_f1 = 0.06               # m^3   (60 liter liquid)
+  P1 = 101325.0               # Pa    (1 atm)
+
+  # engine demand
+  P_engine = 2533125.0        # Pa    (25 atm)
+  t_burn = 120.0              # s
+
+  # unit conversion
+  m3ps_to_cfm = 2118.8800032893154   # ft^3/min per (m^3/s)
+
+  # numeric guards
+  eps = 0.000000001
+
+guesses:
+  # saturated properties at 1 atm (rough, for warm start)
+  ? T1 = 90.0
+  ? v_f1 = 0.000876
+  ? v_g1 = 0.231
+  ? m_f1 = 68.5
+  ? Vol_g1 = 0.005
+  ? m_g1 = 0.022
+  ? m1 = 68.5
+  ? x1 = 0.0003
+  ? v1 = 0.00095
+
+  # state when tank is empty of liquid (all vapor at P1)
+  ? v2 = 0.231
+  ? T2 = 90.0
+  ? m2 = 0.28
+
+  # delivered mass and flow rate over burn time
+  ? m_out = 68.2
+  ? f_pump = 0.996
+  ? m_dot = 0.57
+  ? V_dot = 0.00050
+  ? V_dot_cfm = 1.05
+
+equations:
+  # -------------------------
+  # State 1: initial tank at P1 with liquid + vapor volumes given
+  # -------------------------
+  T1 - PropsSI("T","P",P1,"Q",0.0,"Oxygen") = 0.0
+
+  v_f1 - (1.0 / max(eps, PropsSI("DMASS","P",P1,"Q",0.0,"Oxygen"))) = 0.0
+  v_g1 - (1.0 / max(eps, PropsSI("DMASS","P",P1,"Q",1.0,"Oxygen"))) = 0.0
+
+  m_f1 - (Vol_f1 / max(eps, v_f1)) = 0.0
+  Vol_g1 - (Vol - Vol_f1) = 0.0
+  m_g1 - (Vol_g1 / max(eps, v_g1)) = 0.0
+
+  m1 - (m_f1 + m_g1) = 0.0
+  x1 - (m_g1 / max(eps, m1)) = 0.0
+  v1 - (Vol / max(eps, m1)) = 0.0
+
+  # -------------------------
+  # State 2: tank empty of liquid (all vapor), still at P1
+  # -------------------------
+  T2 - PropsSI("T","P",P1,"Q",1.0,"Oxygen") = 0.0
+  v2 - (1.0 / max(eps, PropsSI("DMASS","P",P1,"Q",1.0,"Oxygen"))) = 0.0
+  m2 - (Vol / max(eps, v2)) = 0.0
+
+  # -------------------------
+  # Delivered oxygen over burn time
+  # -------------------------
+  m_out + m2 - m1 = 0.0
+  f_pump - (m_out / max(eps, m1)) = 0.0
+
+  m_dot - (m_out / max(eps, t_burn)) = 0.0
+  V_dot - (m_dot * v_f1) = 0.0
+  V_dot_cfm - (V_dot * m3ps_to_cfm) = 0.0
+
+report:
+  Vol, Vol_f1, Vol_g1
+  P1, P_engine, t_burn
+  T1, v_f1, v_g1
+  m_f1, m_g1, m1, x1, v1
+  T2, v2, m2
+  m_out, f_pump
+  m_dot, V_dot, V_dot_cfm

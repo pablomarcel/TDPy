@@ -1,0 +1,91 @@
+title: Example 3.5-2 — Helium Balloon (TDPy)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 3.5-2 Helium Balloon
+#
+# Rules followed:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp(), etc.)
+# - No scientific notation
+# - Uses PropsSI thermo calls (routes to SciPy)
+# - Report list contains ONLY variable names (no hyphens)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  # Inputs (unrolled)
+  D_b_1 = 0.08                 # m   (8 cm)
+  D_b_2 = 0.09                 # m   (9 cm)
+  K = 52000.0                  # N/m^3  (balloon constant)
+  T1 = 293.15                  # K   (20 C)
+  P_amb = 101325.0             # Pa  (1 atm)
+
+  pi = 3.141592653589793
+  eps = 0.000000001
+
+guesses:
+  ? P1 = 117965.0
+  ? rho1 = 0.20
+  ? v1 = 5.0
+  ? u1 = 900000.0
+  ? Vol1 = 0.000268
+  ? m = 0.000052
+
+  ? P2 = 120045.0
+  ? Vol2 = 0.000382
+  ? v2 = 7.3
+  ? rho2 = 0.14
+  ? T2 = 420.0
+  ? T2_C = 147.0
+  ? u2 = 1300000.0
+
+  ? W_out_A = 13.5
+  ? Q_in = 35.0
+  ? W_out_B = 11.5
+  ? W_net = -2.0
+  ? W_net_check = -2.0
+
+equations:
+  # Pressures from balloon relation
+  P1 - (P_amb + 4.0 * K * D_b_1) = 0.0
+  P2 - (P_amb + 4.0 * K * D_b_2) = 0.0
+
+  # Initial state (Helium at T1, P1)
+  rho1 - PropsSI("DMASS","T",T1,"P",P1,"Helium") = 0.0
+  v1 - (1.0 / max(eps, rho1)) = 0.0
+  u1 - PropsSI("UMASS","T",T1,"P",P1,"Helium") = 0.0
+
+  # Balloon volumes (sphere volume)
+  Vol1 - (4.0 * pi * ((D_b_1 / 2.0) ** 3) / 3.0) = 0.0
+  Vol2 - (4.0 * pi * ((D_b_2 / 2.0) ** 3) / 3.0) = 0.0
+
+  # Mass of helium (constant)
+  m - (Vol1 / max(eps, v1)) = 0.0
+
+  # Final specific volume from final balloon volume
+  v2 - (Vol2 / max(eps, m)) = 0.0
+  rho2 - (1.0 / max(eps, v2)) = 0.0
+
+  # Final state from (P2, rho2)
+  T2 - PropsSI("T","P",P2,"DMASS",rho2,"Helium") = 0.0
+  u2 - PropsSI("UMASS","P",P2,"DMASS",rho2,"Helium") = 0.0
+  T2_C - (T2 - 273.15) = 0.0
+
+  # Work and heat transfer
+  W_out_A - (P_amb * (Vol2 - Vol1) + pi * K * ((D_b_2 ** 4) - (D_b_1 ** 4)) / 2.0) = 0.0
+  Q_in - (W_out_A + m * (u2 - u1)) = 0.0
+
+  W_out_B - (P_amb * (Vol2 - Vol1)) = 0.0
+  W_net - (-pi * K * ((D_b_2 ** 4) - (D_b_1 ** 4)) / 2.0) = 0.0
+  W_net_check - (W_out_B - W_out_A) = 0.0
+
+report:
+  D_b_1, D_b_2, K, T1, P_amb
+  P1, rho1, v1, u1, Vol1, m
+  P2, Vol2, v2, rho2, T2, T2_C, u2
+  W_out_A, Q_in, W_out_B, W_net, W_net_check

@@ -1,0 +1,54 @@
+{
+  "problem_type": "equations",
+  "title": "reversible_chaos",
+  "constants": {
+    "g": 9.80665,
+    "P_atm": 100000.0,
+    "A_c": 0.18,
+    "P_1": 450000.0,
+    "V_1": 0.45
+  },
+  "equations": [
+    "V_2 - 2*V_1 = 0",
+    "P_2*V_2 - P_1*V_1 = 0",
+    "P_atm*A_c + m_p*g - P_2*A_c = 0",
+    "W_rev - P_1*V_1*log(V_2/V_1) = 0",
+    "W_irrev - (P_atm*(V_2-V_1) + m_p*g*(V_2-V_1)/A_c) = 0"
+  ],
+  "variables": [
+    {
+      "name": "V_2",
+      "guess": 0.9
+    },
+    {
+      "name": "P_2",
+      "guess": 225000.0
+    },
+    {
+      "name": "m_p",
+      "guess": 2300.0
+    },
+    {
+      "name": "W_rev",
+      "guess": 140000.0
+    },
+    {
+      "name": "W_irrev",
+      "guess": 101000.0
+    }
+  ],
+  "solve": {
+    "backend": "auto",
+    "method": "hybr",
+    "tol": 1e-06,
+    "max_iter": 50,
+    "max_restarts": 2
+  },
+  "report": [
+    "P_2",
+    "m_p",
+    "W_rev",
+    "W_irrev",
+    "V_2"
+  ]
+}

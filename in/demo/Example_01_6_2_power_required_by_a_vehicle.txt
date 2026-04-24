@@ -1,0 +1,88 @@
+title: Example 1.6-2 Power required by a vehicle (Prius vs Escape) — TDPy
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 1.6-2  Power required by a vehicle
+#
+# Rules followed:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp(), etc.)
+# - No scientific notation
+# - Report variables listed without hyphen bullets
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 2000
+  max_restarts: 2
+
+given:
+  # ---------------- base inputs (as given in the book) ----------------
+  rho_lbm_ft3 = 0.075
+  vel_mph = 65.0
+  f = 0.02
+
+  C_d_prius = 0.29
+  A_f_prius_ft2 = 21.2
+  W_prius_lbf = 2930.0
+
+  C_d_escape = 0.40
+  A_f_escape_ft2 = 29.0
+  W_escape_lbf = 3272.0
+
+  # ---------------- unrolled conversion factors ----------------
+  lbm_to_kg = 0.45359237
+  ft_to_m = 0.3048
+  ft2_to_m2 = 0.09290304
+  mph_to_mps = 0.44704
+  lbf_to_N = 4.4482216152605
+
+  W_to_kW = 0.001
+  hp_per_W = 0.0013410220895950279
+
+  # ---------------- converted / derived quantities ----------------
+  lbm_ft3_to_kg_m3 = lbm_to_kg / (ft_to_m * ft_to_m * ft_to_m)
+  rho = rho_lbm_ft3 * lbm_ft3_to_kg_m3
+  vel = vel_mph * mph_to_mps
+
+  A_f_prius = A_f_prius_ft2 * ft2_to_m2
+  A_f_escape = A_f_escape_ft2 * ft2_to_m2
+
+  W_prius = W_prius_lbf * lbf_to_N
+  W_escape = W_escape_lbf * lbf_to_N
+
+guesses:
+  ? F_r_prius = 260.7
+  ? F_d_prius = 289.7
+  ? W_dot_prius = 16000.0
+  ? W_dot_prius_kW = 16.0
+  ? W_dot_prius_hp = 21.5
+
+  ? F_r_escape = 291.1
+  ? F_d_escape = 546.6
+  ? W_dot_escape = 24300.0
+  ? W_dot_escape_kW = 24.3
+  ? W_dot_escape_hp = 32.6
+
+equations:
+  # ---------------- Prius ----------------
+  F_r_prius - (f * W_prius) = 0.0
+  F_d_prius - (A_f_prius * C_d_prius * rho * vel * vel / 2.0) = 0.0
+  W_dot_prius - ((F_r_prius + F_d_prius) * vel) = 0.0
+  W_dot_prius_kW - (W_dot_prius * W_to_kW) = 0.0
+  W_dot_prius_hp - (W_dot_prius * hp_per_W) = 0.0
+
+  # ---------------- Escape ----------------
+  F_r_escape - (f * W_escape) = 0.0
+  F_d_escape - (A_f_escape * C_d_escape * rho * vel * vel / 2.0) = 0.0
+  W_dot_escape - ((F_r_escape + F_d_escape) * vel) = 0.0
+  W_dot_escape_kW - (W_dot_escape * W_to_kW) = 0.0
+  W_dot_escape_hp - (W_dot_escape * hp_per_W) = 0.0
+
+report:
+  rho_lbm_ft3, vel_mph, f
+  rho, vel
+  C_d_prius, A_f_prius_ft2, A_f_prius, W_prius_lbf, W_prius
+  F_r_prius, F_d_prius, W_dot_prius, W_dot_prius_kW, W_dot_prius_hp
+  C_d_escape, A_f_escape_ft2, A_f_escape, W_escape_lbf, W_escape
+  F_r_escape, F_d_escape, W_dot_escape, W_dot_escape_kW, W_dot_escape_hp

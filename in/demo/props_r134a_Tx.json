@@ -1,0 +1,18 @@
+{
+  "problem_type": "thermo_props",
+  "backend": "coolprop",
+  "fluid": "R134a",
+
+  "states": [
+    {
+      "id": "sat_vapor_Tx",
+      "given": { "T_C": -10, "x": 1.0 },
+      "ask": ["T", "P", "Q", "Hmass", "Smass", "Dmass", "Cpmass", "Cvmass", "A", "V", "L", "Prandtl"]
+    }
+  ],
+
+  "meta": {
+    "title": "R134a saturated vapor at -10C",
+    "note": "Single-state thermo_props evaluation using (T, x) inputs."
+  }
+}

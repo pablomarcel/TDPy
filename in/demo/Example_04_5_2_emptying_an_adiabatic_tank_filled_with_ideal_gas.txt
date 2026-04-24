@@ -1,0 +1,50 @@
+title: Example 4.5-2 Emptying an Adiabatic Tank filled with Ideal Gas (TDPy, closed form)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 200
+  max_restarts: 1
+
+given:
+  # inputs (all conversions unrolled)
+  T_1 = 293.15                 # K  (20 C)
+
+  # pressures (psi -> Pa unrolled)
+  P_1_psi = 100.0
+  P_1 = 689475.7293168366      # Pa  (100 psi)
+
+  P_2_psi = 14.7
+  P_2 = 101352.93250947599     # Pa  (14.7 psi)
+
+  # ideal-gas air constants
+  c_v = 717.6                  # J/kg-K
+  R = 287.058                  # J/kg-K
+  c_P = 1004.658               # J/kg-K  (= c_v + R)
+
+  # helpers
+  K_offset = 273.15
+
+guesses:
+  ? T_2 = 230.0
+  ? T_2_C = -40.0
+
+equations:
+  # closed-form relation for adiabatic blowdown (ideal gas, constant cp)
+  T_2 - (T_1 * (P_2 / P_1) ** (R / c_P)) = 0.0
+
+  # temperature in C
+  T_2_C - (T_2 - K_offset) = 0.0
+
+report:
+  T_1
+  P_1_psi
+  P_1
+  P_2_psi
+  P_2
+  c_v
+  R
+  c_P
+  T_2
+  T_2_C

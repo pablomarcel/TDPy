@@ -1,0 +1,5 @@
+# eqn_file.txt
+# one equation per line (blank lines + comments allowed)
+
+x + y - 2
+x*y - 1

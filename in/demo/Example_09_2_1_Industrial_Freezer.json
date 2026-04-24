@@ -1,0 +1,139 @@
+{
+  "problem_type": "equations",
+  "title": "eqn_gui_equations",
+  "constants": {
+    "D_b_1": 0.08,
+    "D_b_2": 0.09,
+    "K": 52000.0,
+    "T1": 293.15,
+    "P_amb": 101325.0,
+    "pi": 3.141592653589793,
+    "eps": 1e-09
+  },
+  "equations": [
+    "P1 - (P_amb + 4.0 * K * D_b_1) = 0.0",
+    "P2 - (P_amb + 4.0 * K * D_b_2) = 0.0",
+    "rho1 - PropsSI(\"DMASS\",\"T\",T1,\"P\",P1,\"Helium\") = 0.0",
+    "v1 - (1.0 / max(eps, rho1)) = 0.0",
+    "u1 - PropsSI(\"UMASS\",\"T\",T1,\"P\",P1,\"Helium\") = 0.0",
+    "Vol1 - (4.0 * pi * ((D_b_1 / 2.0) ** 3) / 3.0) = 0.0",
+    "Vol2 - (4.0 * pi * ((D_b_2 / 2.0) ** 3) / 3.0) = 0.0",
+    "m - (Vol1 / max(eps, v1)) = 0.0",
+    "v2 - (Vol2 / max(eps, m)) = 0.0",
+    "rho2 - (1.0 / max(eps, v2)) = 0.0",
+    "T2 - PropsSI(\"T\",\"P\",P2,\"DMASS\",rho2,\"Helium\") = 0.0",
+    "u2 - PropsSI(\"UMASS\",\"P\",P2,\"DMASS\",rho2,\"Helium\") = 0.0",
+    "T2_C - (T2 - 273.15) = 0.0",
+    "W_out_A - (P_amb * (Vol2 - Vol1) + pi * K * ((D_b_2 ** 4) - (D_b_1 ** 4)) / 2.0) = 0.0",
+    "Q_in - (W_out_A + m * (u2 - u1)) = 0.0",
+    "W_out_B - (P_amb * (Vol2 - Vol1)) = 0.0",
+    "W_net - (-pi * K * ((D_b_2 ** 4) - (D_b_1 ** 4)) / 2.0) = 0.0",
+    "W_net_check - (W_out_B - W_out_A) = 0.0"
+  ],
+  "variables": [
+    {
+      "name": "P1",
+      "guess": 117965.0
+    },
+    {
+      "name": "P2",
+      "guess": 120045.0
+    },
+    {
+      "name": "rho1",
+      "guess": 0.2
+    },
+    {
+      "name": "v1",
+      "guess": 5.0
+    },
+    {
+      "name": "u1",
+      "guess": 900000.0
+    },
+    {
+      "name": "Vol1",
+      "guess": 0.000268
+    },
+    {
+      "name": "Vol2",
+      "guess": 0.000382
+    },
+    {
+      "name": "m",
+      "guess": 5.2e-05
+    },
+    {
+      "name": "v2",
+      "guess": 7.3
+    },
+    {
+      "name": "rho2",
+      "guess": 0.14
+    },
+    {
+      "name": "T2",
+      "guess": 420.0
+    },
+    {
+      "name": "u2",
+      "guess": 1300000.0
+    },
+    {
+      "name": "T2_C",
+      "guess": 147.0
+    },
+    {
+      "name": "W_out_A",
+      "guess": 13.5
+    },
+    {
+      "name": "Q_in",
+      "guess": 35.0
+    },
+    {
+      "name": "W_out_B",
+      "guess": 11.5
+    },
+    {
+      "name": "W_net",
+      "guess": -2.0
+    },
+    {
+      "name": "W_net_check",
+      "guess": -2.0
+    }
+  ],
+  "solve": {
+    "backend": "auto",
+    "method": "hybr",
+    "tol": 1e-06,
+    "max_iter": 50,
+    "max_restarts": 2
+  },
+  "report": [
+    "D_b_1",
+    "D_b_2",
+    "K",
+    "T1",
+    "P_amb",
+    "P1",
+    "rho1",
+    "v1",
+    "u1",
+    "Vol1",
+    "m",
+    "P2",
+    "Vol2",
+    "v2",
+    "rho2",
+    "T2",
+    "T2_C",
+    "u2",
+    "W_out_A",
+    "Q_in",
+    "W_out_B",
+    "W_net",
+    "W_net_check"
+  ]
+}

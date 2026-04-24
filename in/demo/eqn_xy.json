@@ -1,0 +1,22 @@
+{
+  "problem_type": "equations",
+  "backend": "gekko",
+  "method": "hybr",
+  "tol": 1e-10,
+  "max_iter": 200,
+
+  "variables": {
+    "x": { "guess": 1.5 },
+    "y": { "guess": 0.5 }
+  },
+
+  "equations": [
+    "x + y - 2",
+    "x*y - 1"
+  ],
+
+  "meta": {
+    "title": "Solve simple 2x2 system",
+    "note": "Find (x,y) such that x+y=2 and x*y=1."
+  }
+}

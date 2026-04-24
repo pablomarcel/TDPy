@@ -1,0 +1,105 @@
+title: Klein & Nellis — Example 2.6-1 Fire Extinguishing System (isothermal air + valve resistance) — TDPy
+
+# Thermodynamics — S.A. Klein and G.F. Nellis (Cambridge University Press, 2011)
+# Example 2.6-1
+#
+# Notes (EES -> TDPy)
+# - EES uses Integral(...) to time-step ODEs. Here we use the closed-form solution that follows from:
+#     1) dVfdt = -(P - P_atm)/R_v
+#     2) V_g + V_f = V  (tank volume constant)
+#     3) V_g*dPdt + P*dVgdt = 0  ->  P*V_g = constant = P_ini*V_g_ini
+# - This avoids integral primitives and stays purely algebraic (one implicit ln equation in V_g).
+#
+# Rules followed:
+# - Inline equations
+# - Unrolled conversions (no convert(), converttemp(), etc.)
+# - No scientific notation
+# - Report variables contain no hyphens
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  # ---- conversions (unrolled) ----
+  gal_to_m3 = 0.003785411784
+  psi_to_Pa = 6894.757293168
+  gpm_to_m3s = 0.0000630901964
+
+  # ---- inputs ----
+  V = 0.1892705892              # m^3   (50 gal)
+  T = 293.15                    # K     (20 C), isothermal air assumption
+  f = 0.8                       # fraction initially filled with water
+  P_ini = 689475.7293168        # Pa    (100 psi)
+  P_atm = 101325.0              # Pa    (1 atm)
+  R_v = 1092841310.7885015      # Pa-s/m^3  (10 psi/gpm)
+  t_sim = 120.0                 # s     simulation time
+
+  eps = 0.000000001
+
+  # ---- derived constants (kept in given; do not add equations) ----
+  V_f_ini = f * V
+  V_g_ini = (1.0 - f) * V
+
+  # P*V_g = constant (from ideal gas at constant T and constant air mass)
+  K_pv = P_ini * V_g_ini
+
+guesses:
+  # final gas volume should be between V_g_ini and V
+  ? V_g = 0.075
+
+  ? P = 350000.0
+  ? V_f = 0.11
+
+  ? P_psi = 50.0
+  ? V_f_gal = 30.0
+
+  ? V_expel_m3 = 0.04
+  ? V_expel_gal = 10.0
+
+  ? V_dot_out = 0.0002
+  ? V_dot_out_gpm = 3.0
+
+equations:
+  # ---------------------------
+  # Closed-form solution for V_g(t) from:
+  # dVg/dt = (P - P_atm)/R_v ,  P = K_pv / V_g
+  # => t = (R_v/P_atm)*(V_g_ini - V_g) + (R_v*K_pv/P_atm^2)*ln( (K_pv - P_atm*V_g_ini)/(K_pv - P_atm*V_g) )
+  # Use max(eps, ...) to keep ln arguments positive in early iterations.
+  # ---------------------------
+
+  num_ln = max(eps, (K_pv - P_atm * V_g_ini))
+  den_ln = max(eps, (K_pv - P_atm * V_g))
+
+  t_sim - (R_v / P_atm) * (V_g_ini - V_g) - (R_v * K_pv / (P_atm * P_atm)) * ln(num_ln / den_ln) = 0.0
+
+  # ---------------------------
+  # Derived states at t_sim
+  # ---------------------------
+  P - (K_pv / max(eps, V_g)) = 0.0
+  V_f - (V - V_g) = 0.0
+
+  # Outflow rate at t_sim (positive out of tank), from valve law
+  V_dot_out - ((P - P_atm) / R_v) = 0.0
+  V_dot_out_gpm - (V_dot_out / gpm_to_m3s) = 0.0
+
+  # Convenience outputs
+  P_psi - (P / psi_to_Pa) = 0.0
+  V_f_gal - (V_f / gal_to_m3) = 0.0
+
+  V_expel_m3 - (V_f_ini - V_f) = 0.0
+  V_expel_gal - (V_expel_m3 / gal_to_m3) = 0.0
+
+report:
+  V, T, f, t_sim
+  gal_to_m3, psi_to_Pa, gpm_to_m3s
+  P_ini, P_atm, R_v
+  V_f_ini, V_g_ini, K_pv
+  V_g, V_f
+  P, P_psi
+  V_dot_out, V_dot_out_gpm
+  V_f_gal
+  V_expel_m3, V_expel_gal

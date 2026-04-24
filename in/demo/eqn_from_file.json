@@ -1,0 +1,14 @@
+{
+  "problem_type": "equations",
+  "backend": "auto",
+  "method": "hybr",
+  "tol": 1e-10,
+  "max_iter": 200,
+
+  "variables": {
+    "x": { "guess": 1.5 },
+    "y": { "guess": 0.5 }
+  },
+
+  "equations_file": "eqn_file.txt"
+}

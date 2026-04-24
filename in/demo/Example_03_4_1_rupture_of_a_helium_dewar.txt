@@ -1,0 +1,121 @@
+title: Example 3.4-1 Rupture of a Helium Dewar (TDPy)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 3.4-1 Rupture of a Helium Dewar
+#
+# Rules honored:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp(), etc.)
+# - No scientific notation
+# - No hyphens in report variable names
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 2000
+  max_restarts: 2
+
+given:
+  # Tank
+  Vol = 0.1                  # m^3  (100 liter)
+  Vol_f1 = 0.08              # m^3  (80 liter liquid initially)
+
+  # Heat leak
+  Q_dot = 0.25               # W
+
+  # Pressures
+  P1 = 101325.0              # Pa   (1 atm)
+  P2 = 1034213.5939752       # Pa   (150 psi)
+
+  # Time conversion
+  sec_per_day = 86400.0
+
+  # Numeric guard
+  eps = 0.000000001
+
+guesses:
+  # Rupture state guesses (helps SciPy warm start)
+  ? u2 = 40000.0
+  ? T2 = 10.0
+  ? Q = 200000.0
+  ? time_rupture = 800000.0
+  ? time_rupture_day = 9.0
+
+equations:
+  # ----------------------------
+  # Initial saturated properties at P1
+  # ----------------------------
+  rho_f1 = PropsSI("DMASS","P",P1,"Q",0.0,"Helium")
+  v_f1 = 1.0 / max(eps, rho_f1)
+
+  rho_g1 = PropsSI("DMASS","P",P1,"Q",1.0,"Helium")
+  v_g1 = 1.0 / max(eps, rho_g1)
+
+  u_f1 = PropsSI("UMASS","P",P1,"Q",0.0,"Helium")
+  u_g1 = PropsSI("UMASS","P",P1,"Q",1.0,"Helium")
+
+  T1 = PropsSI("T","P",P1,"Q",0.0,"Helium")
+
+  # ----------------------------
+  # Initial masses from volumes
+  # ----------------------------
+  m_f1 = Vol_f1 / max(eps, v_f1)
+  Vol_g1 = Vol - Vol_f1
+  m_g1 = Vol_g1 / max(eps, v_g1)
+
+  m1 = m_f1 + m_g1
+  x1_raw = m_g1 / max(eps, m1)
+  x1 = clamp(x1_raw, 0.0, 1.0)
+
+  # Mixture specific internal energy (mass-weighted)
+  u1 = (m_f1 * u_f1 + m_g1 * u_g1) / max(eps, m1)
+
+  # Mixture specific volume (from tank geometry)
+  v1 = Vol / max(eps, m1)
+
+  # ----------------------------
+  # Rupture state (P2, v2 fixed by constant V and constant m)
+  # ----------------------------
+  m2 = m1
+  v2 = Vol / max(eps, m2)
+  rho2 = 1.0 / max(eps, v2)
+
+  # Use a direct (P, rho) state to avoid any quality solver issues
+  u2 - PropsSI("UMASS","P",P2,"DMASS",rho2,"Helium") = 0.0
+  T2 - PropsSI("T","P",P2,"DMASS",rho2,"Helium") = 0.0
+
+  # ----------------------------
+  # Energy to rupture and time
+  # ----------------------------
+  Q - (m2 * u2 - m1 * u1) = 0.0
+  time_rupture - (Q / max(eps, Q_dot)) = 0.0
+  time_rupture_day - (time_rupture / sec_per_day) = 0.0
+
+report:
+  Vol
+  Vol_f1
+  Vol_g1
+  Q_dot
+  P1
+  P2
+  rho_f1
+  v_f1
+  rho_g1
+  v_g1
+  u_f1
+  u_g1
+  T1
+  m_f1
+  m_g1
+  m1
+  x1
+  u1
+  v1
+  rho2
+  v2
+  T2
+  u2
+  Q
+  time_rupture
+  time_rupture_day

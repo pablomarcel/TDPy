@@ -1,0 +1,229 @@
+title: Example 4.5-1 Hydrogen Storage Tank for a Vehicle (TDPy, PropsSI, explicit time steps)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 8000
+  max_restarts: 2
+
+given:
+  eps = 0.000000001
+
+  # inputs (conversions unrolled)
+  N_tank = 3.0
+  H_tank = 0.65
+  D_tank = 0.28
+
+  P_supply = 30000000.0
+  T_amb = 298.15
+  T_supply = 298.15
+  P_ini = 6000000.0
+  T_ini = 298.15
+  T_wall = 298.15
+
+  C_valve = 0.00000268
+  h_conv = 40.0
+
+  pi = 3.141592653589793
+
+  t_fill = 180.0
+  dt = 30.0
+
+  Pa_per_bar = 100000.0
+  K_offset = 273.15
+
+  # geometry
+  V_tank = pi * D_tank * D_tank * H_tank / 4.0
+  V_total = V_tank * N_tank
+  A_s = N_tank * (pi * D_tank * H_tank + pi * D_tank * D_tank / 2.0)
+
+guesses:
+  ? h_supply = 4200000.0
+
+  ? rho0 = 4.8
+  ? u0 = 3000000.0
+  ? m0 = 0.58
+  ? U0 = 1750000.0
+  ? P0 = 6000000.0
+  ? T0 = 298.15
+  ? dP0 = 24000000.0
+  ? m_dot0 = 0.013
+  ? Q_dot0 = 0.0
+  ? dUdt0 = 50000.0
+  ? m1 = 0.9
+  ? U1 = 3000000.0
+
+  ? rho1 = 7.5
+  ? u1 = 3300000.0
+  ? P1 = 9000000.0
+  ? T1 = 310.0
+  ? dP1 = 21000000.0
+  ? m_dot1 = 0.012
+  ? Q_dot1 = 1500.0
+  ? dUdt1 = 48000.0
+  ? m2 = 1.25
+  ? U2 = 4400000.0
+
+  ? rho2 = 10.4
+  ? u2 = 3500000.0
+  ? P2 = 12000000.0
+  ? T2 = 320.0
+  ? dP2 = 18000000.0
+  ? m_dot2 = 0.011
+  ? Q_dot2 = 2500.0
+  ? dUdt2 = 45000.0
+  ? m3 = 1.6
+  ? U3 = 5800000.0
+
+  ? rho3 = 13.3
+  ? u3 = 3600000.0
+  ? P3 = 15000000.0
+  ? T3 = 330.0
+  ? dP3 = 15000000.0
+  ? m_dot3 = 0.01
+  ? Q_dot3 = 3500.0
+  ? dUdt3 = 42000.0
+  ? m4 = 1.95
+  ? U4 = 7100000.0
+
+  ? rho4 = 16.2
+  ? u4 = 3650000.0
+  ? P4 = 19000000.0
+  ? T4 = 340.0
+  ? dP4 = 11000000.0
+  ? m_dot4 = 0.009
+  ? Q_dot4 = 4500.0
+  ? dUdt4 = 38000.0
+  ? m5 = 2.25
+  ? U5 = 8200000.0
+
+  ? rho5 = 18.7
+  ? u5 = 3650000.0
+  ? P5 = 23000000.0
+  ? T5 = 350.0
+  ? dP5 = 7000000.0
+  ? m_dot5 = 0.007
+  ? Q_dot5 = 5200.0
+  ? dUdt5 = 30000.0
+  ? m6 = 2.45
+  ? U6 = 9000000.0
+
+  ? rho6 = 20.4
+  ? u6 = 3670000.0
+  ? P6 = 25000000.0
+  ? T6 = 355.0
+
+  ? m_fuel = 1.9
+  ? P_bar6 = 250.0
+  ? T_C6 = 80.0
+
+equations:
+  # supply enthalpy (upstream of valve)
+  h_supply - PropsSI("HMASS","T",T_supply,"P",P_supply,"Hydrogen") = 0.0
+
+  # initial state from (T_ini, P_ini)
+  rho0 - PropsSI("DMASS","T",T_ini,"P",P_ini,"Hydrogen") = 0.0
+  u0 - PropsSI("UMASS","T",T_ini,"P",P_ini,"Hydrogen") = 0.0
+  m0 - (V_total * rho0) = 0.0
+  U0 - (m0 * u0) = 0.0
+
+  # step 0: state map + rates
+  P0 - PropsSI("P","DMASS",rho0,"UMASS",u0,"Hydrogen") = 0.0
+  T0 - PropsSI("T","DMASS",rho0,"UMASS",u0,"Hydrogen") = 0.0
+  dP0 - max(0.0, (P_supply - P0)) = 0.0
+  m_dot0 - (C_valve * sqrt(dP0)) = 0.0
+  Q_dot0 - (h_conv * A_s * (T0 - T_wall)) = 0.0
+  dUdt0 - (m_dot0 * h_supply - Q_dot0) = 0.0
+  m1 - (m0 + dt * m_dot0) = 0.0
+  U1 - (U0 + dt * dUdt0) = 0.0
+
+  # step 1
+  rho1 - (m1 / max(eps, V_total)) = 0.0
+  u1 - (U1 / max(eps, m1)) = 0.0
+  P1 - PropsSI("P","DMASS",rho1,"UMASS",u1,"Hydrogen") = 0.0
+  T1 - PropsSI("T","DMASS",rho1,"UMASS",u1,"Hydrogen") = 0.0
+  dP1 - max(0.0, (P_supply - P1)) = 0.0
+  m_dot1 - (C_valve * sqrt(dP1)) = 0.0
+  Q_dot1 - (h_conv * A_s * (T1 - T_wall)) = 0.0
+  dUdt1 - (m_dot1 * h_supply - Q_dot1) = 0.0
+  m2 - (m1 + dt * m_dot1) = 0.0
+  U2 - (U1 + dt * dUdt1) = 0.0
+
+  # step 2
+  rho2 - (m2 / max(eps, V_total)) = 0.0
+  u2 - (U2 / max(eps, m2)) = 0.0
+  P2 - PropsSI("P","DMASS",rho2,"UMASS",u2,"Hydrogen") = 0.0
+  T2 - PropsSI("T","DMASS",rho2,"UMASS",u2,"Hydrogen") = 0.0
+  dP2 - max(0.0, (P_supply - P2)) = 0.0
+  m_dot2 - (C_valve * sqrt(dP2)) = 0.0
+  Q_dot2 - (h_conv * A_s * (T2 - T_wall)) = 0.0
+  dUdt2 - (m_dot2 * h_supply - Q_dot2) = 0.0
+  m3 - (m2 + dt * m_dot2) = 0.0
+  U3 - (U2 + dt * dUdt2) = 0.0
+
+  # step 3
+  rho3 - (m3 / max(eps, V_total)) = 0.0
+  u3 - (U3 / max(eps, m3)) = 0.0
+  P3 - PropsSI("P","DMASS",rho3,"UMASS",u3,"Hydrogen") = 0.0
+  T3 - PropsSI("T","DMASS",rho3,"UMASS",u3,"Hydrogen") = 0.0
+  dP3 - max(0.0, (P_supply - P3)) = 0.0
+  m_dot3 - (C_valve * sqrt(dP3)) = 0.0
+  Q_dot3 - (h_conv * A_s * (T3 - T_wall)) = 0.0
+  dUdt3 - (m_dot3 * h_supply - Q_dot3) = 0.0
+  m4 - (m3 + dt * m_dot3) = 0.0
+  U4 - (U3 + dt * dUdt3) = 0.0
+
+  # step 4
+  rho4 - (m4 / max(eps, V_total)) = 0.0
+  u4 - (U4 / max(eps, m4)) = 0.0
+  P4 - PropsSI("P","DMASS",rho4,"UMASS",u4,"Hydrogen") = 0.0
+  T4 - PropsSI("T","DMASS",rho4,"UMASS",u4,"Hydrogen") = 0.0
+  dP4 - max(0.0, (P_supply - P4)) = 0.0
+  m_dot4 - (C_valve * sqrt(dP4)) = 0.0
+  Q_dot4 - (h_conv * A_s * (T4 - T_wall)) = 0.0
+  dUdt4 - (m_dot4 * h_supply - Q_dot4) = 0.0
+  m5 - (m4 + dt * m_dot4) = 0.0
+  U5 - (U4 + dt * dUdt4) = 0.0
+
+  # step 5
+  rho5 - (m5 / max(eps, V_total)) = 0.0
+  u5 - (U5 / max(eps, m5)) = 0.0
+  P5 - PropsSI("P","DMASS",rho5,"UMASS",u5,"Hydrogen") = 0.0
+  T5 - PropsSI("T","DMASS",rho5,"UMASS",u5,"Hydrogen") = 0.0
+  dP5 - max(0.0, (P_supply - P5)) = 0.0
+  m_dot5 - (C_valve * sqrt(dP5)) = 0.0
+  Q_dot5 - (h_conv * A_s * (T5 - T_wall)) = 0.0
+  dUdt5 - (m_dot5 * h_supply - Q_dot5) = 0.0
+  m6 - (m5 + dt * m_dot5) = 0.0
+  U6 - (U5 + dt * dUdt5) = 0.0
+
+  # final state (step 6)
+  rho6 - (m6 / max(eps, V_total)) = 0.0
+  u6 - (U6 / max(eps, m6)) = 0.0
+  P6 - PropsSI("P","DMASS",rho6,"UMASS",u6,"Hydrogen") = 0.0
+  T6 - PropsSI("T","DMASS",rho6,"UMASS",u6,"Hydrogen") = 0.0
+
+  # outputs
+  m_fuel - (m6 - m0) = 0.0
+  P_bar6 - (P6 / Pa_per_bar) = 0.0
+  T_C6 - (T6 - K_offset) = 0.0
+
+report:
+  N_tank, H_tank, D_tank
+  V_tank, V_total, A_s
+  P_supply, T_supply
+  P_ini, T_ini
+  C_valve, h_conv, T_wall
+  t_fill, dt
+  h_supply
+
+  m0, U0, rho0, u0, P0, T0, m_dot0, Q_dot0
+  m1, U1, rho1, u1, P1, T1, m_dot1, Q_dot1
+  m2, U2, rho2, u2, P2, T2, m_dot2, Q_dot2
+  m3, U3, rho3, u3, P3, T3, m_dot3, Q_dot3
+  m4, U4, rho4, u4, P4, T4, m_dot4, Q_dot4
+  m5, U5, rho5, u5, P5, T5, m_dot5, Q_dot5
+  m6, U6, rho6, u6, P6, T6
+
+  m_fuel, P_bar6, T_C6

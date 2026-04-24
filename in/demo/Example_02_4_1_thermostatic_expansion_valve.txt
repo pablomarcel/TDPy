@@ -1,0 +1,109 @@
+title: Example 2.4-1 — Thermostatic Expansion Valve (TDPy)
+
+# Klein & Nellis — Thermodynamics (Cambridge University Press, 2011)
+# Example 2.4-1 Thermostatic Expansion Valve
+#
+# Rules followed:
+# - Inline equations (no procedures)
+# - Unrolled primitives (no convert(), converttemp(), etc.)
+# - No scientific notation
+# - Uses PropsSI thermo calls
+# - Report list contains ONLY variable names (no hyphens)
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  # Geometry (unrolled)
+  Vol_bulb = 0.00001          # m^3   (10 cm^3)
+  Vol_head = 0.000002         # m^3   (2 cm^3)
+
+  # Temperatures (unrolled)
+  T_evap = 268.15             # K     (-5 C)  refrigerant in head space
+  T_evap_out_nom = 271.15     # K     (-2 C)  nominal evaporator outlet
+  T_evap_out = 272.15         # K     (-1 C)  evaporator outlet (case)
+
+  # Nominal bulb pressure (unrolled)
+  P_bulb_nom = 700000.0       # Pa    (700 kPa)
+
+  # Diaphragm + spring (unrolled)
+  A = 0.0001                  # m^2   (1 cm^2)
+  K_spring = 72000.0          # N/m   (7.2e4 N/m, no sci notation)
+
+  eps = 0.000000001
+  pi = 3.141592653589793
+
+guesses:
+  ? P_bulb = 700000.0
+  ? DELTAx = 0.0001
+  ? DELTAx_mm = 0.1
+
+  ? T_sat = 273.0
+  ? T_sat_C = 0.0
+
+  ? rho_bulb_nom = 20.0
+  ? v_bulb_nom = 0.05
+  ? m_bulb_nom = 0.0002
+
+  ? rho_head_nom = 15.0
+  ? v_head_nom = 0.066
+  ? m_head_nom = 0.00003
+
+  ? m_total = 0.00023
+
+  ? rho_bulb = 20.0
+  ? v_bulb = 0.05
+  ? m_bulb = 0.0002
+
+  ? rho_head = 15.0
+  ? v_head = 0.066
+  ? m_head = 0.00003
+
+equations:
+  # Saturation temperature at nominal bulb pressure (for reference)
+  T_sat = PropsSI("T","P",P_bulb_nom,"Q",0.0,"R22")
+  T_sat_C = T_sat - 273.15
+
+  # Nominal mass in bulb + head space at P_bulb_nom
+  rho_bulb_nom = PropsSI("DMASS","T",T_evap_out_nom,"P",P_bulb_nom,"R22")
+  v_bulb_nom = 1.0 / rho_bulb_nom
+  m_bulb_nom = Vol_bulb / v_bulb_nom
+
+  rho_head_nom = PropsSI("DMASS","T",T_evap,"P",P_bulb_nom,"R22")
+  v_head_nom = 1.0 / rho_head_nom
+  m_head_nom = Vol_head / v_head_nom
+
+  m_total = m_bulb_nom + m_head_nom
+
+  # Actual mass balance at new outlet temperature T_evap_out defines P_bulb
+  rho_bulb = PropsSI("DMASS","T",T_evap_out,"P",P_bulb,"R22")
+  v_bulb = 1.0 / rho_bulb
+  m_bulb = Vol_bulb / v_bulb
+
+  rho_head = PropsSI("DMASS","T",T_evap,"P",P_bulb,"R22")
+  v_head = 1.0 / rho_head
+  m_head = Vol_head / v_head
+
+  m_total = m_bulb + m_head
+
+  # Force balance on diaphragm + spring
+  (P_bulb - P_bulb_nom) * A = K_spring * DELTAx
+  DELTAx_mm = DELTAx * 1000.0
+
+report:
+  Vol_bulb, Vol_head
+  T_evap, T_evap_out_nom, T_evap_out
+  P_bulb_nom
+  T_sat, T_sat_C
+  P_bulb
+  rho_bulb_nom, v_bulb_nom, m_bulb_nom
+  rho_head_nom, v_head_nom, m_head_nom
+  m_total
+  rho_bulb, v_bulb, m_bulb
+  rho_head, v_head, m_head
+  A, K_spring
+  DELTAx, DELTAx_mm
