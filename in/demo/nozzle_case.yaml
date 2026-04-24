@@ -1,0 +1,8 @@
+# Demo nozzle case (ideal-gas, quasi-1D, isentropic)
+problem_type: nozzle_ideal
+T0_K: 298.15
+P0_Pa: 500000
+k: 1.4
+R: 287.058
+geometry_csv: nozzle_geometry.csv
+branch_after_throat: sup

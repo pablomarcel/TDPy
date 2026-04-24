@@ -1,0 +1,160 @@
+title: Klein & Nellis — Section 8.2.1 — Ideal Rankine Cycle (Water) — TDPy
+
+given:
+  # ---------------- reservoirs ----------------
+  T_H = 800.0                # K
+  T_C = 325.0                # K
+
+  # ---------------- boiler pressure (unrolled MPa->Pa) ----------------
+  P_b = 2640000.0            # Pa  (2.64 MPa)
+
+  # ---------------- specified net power (unrolled MW->W) ----------------
+  W_dot_net = 50000000.0     # W   (50 MW)
+
+  # ---------------- unrolled conversions ----------------
+  W_to_kW = 0.001
+  Btu_per_kWhr = 3412.141633
+
+equations:
+  # ---------------- State 2: Boiler exit / Turbine inlet ----------------
+  P2 = P_b
+  T2 = T_H
+  h2 = PropsSI("HMASS","T",T2,"P",P2,"Water")
+  s2 = PropsSI("SMASS","T",T2,"P",P2,"Water")
+
+  # ---------------- State 4: Condenser exit / Pump inlet (sat. liquid at T_C) ----------------
+  x4 = 0.0
+  T4 = T_C
+  P4 = PropsSI("P","T",T4,"Q",x4,"Water")
+  h4 = PropsSI("HMASS","T",T4,"Q",x4,"Water")
+  s4 = PropsSI("SMASS","T",T4,"Q",x4,"Water")
+
+  # ---------------- State 1: Pump exit / Boiler inlet (isentropic pump) ----------------
+  s1 = s4
+  P1 = P2
+  h1 = PropsSI("HMASS","P",P1,"SMASS",s1,"Water")
+  T1 = PropsSI("T","P",P1,"SMASS",s1,"Water")
+
+  # ---------------- State 3: Turbine exit / Condenser inlet (isentropic turbine) ----------------
+  s3 = s2
+  P3 = P4
+  h3 = PropsSI("HMASS","P",P3,"SMASS",s3,"Water")
+  T3 = PropsSI("T","P",P3,"SMASS",s3,"Water")
+  x3 = PropsSI("Q","P",P3,"HMASS",h3,"Water")
+
+  # ---------------- Component energy balances (per unit mass) ----------------
+  w_p_per_kg = h1 - h4
+  q_b_per_kg = h2 - h1
+  w_t_per_kg = h2 - h3
+  q_cond_per_kg = h3 - h4
+
+  check_1 = w_t_per_kg + q_cond_per_kg - w_p_per_kg - q_b_per_kg
+
+  W_dot_net_per_kg = w_t_per_kg - w_p_per_kg
+
+  # ---------------- Net power fixes mass flow (m_dot is solved) ----------------
+  W_dot_net = W_dot_net_per_kg * m_dot
+
+  # ---------------- Component rates ----------------
+  W_dot_p = w_p_per_kg * m_dot
+  Q_dot_b = q_b_per_kg * m_dot
+  W_dot_t = w_t_per_kg * m_dot
+  Q_dot_cond = q_cond_per_kg * m_dot
+
+  W_dot_p_kW = W_dot_p * W_to_kW
+  Q_dot_b_kW = Q_dot_b * W_to_kW
+  W_dot_t_kW = W_dot_t * W_to_kW
+  Q_dot_cond_kW = Q_dot_cond * W_to_kW
+  W_dot_net_kW = W_dot_net * W_to_kW
+
+  # ---------------- Performance metrics ----------------
+  bwr = W_dot_p / W_dot_t
+  eta_Rankine = W_dot_net_per_kg / q_b_per_kg
+
+  heat_rate_BtupkWhr = (Q_dot_b / W_dot_net) * Btu_per_kWhr
+
+  eta_max = 1.0 - T_C / T_H
+  W_dot_max = Q_dot_b * eta_max
+  W_dot_lost = W_dot_max - W_dot_net
+
+  # ---------------- Overall entropy balance ----------------
+  Q_dot_b / T_H + S_dot_gen = Q_dot_cond / T_C
+
+  check_2 = T_C * S_dot_gen - W_dot_lost
+
+  # ---------------- Component entropy generation ----------------
+  m_dot * s3 + S_dot_gen_cond = m_dot * s4 + Q_dot_cond / T_C
+  m_dot * s1 + Q_dot_b / T_H + S_dot_gen_b = m_dot * s2
+
+guesses:
+  # key unknown
+  ? m_dot = 20.0
+
+  # state pressures (Pa)
+  ? P4 = 15000.0
+  ? P3 = 15000.0
+
+  # enthalpies (J/kg)
+  ? h1 = 1500000.0
+  ? h2 = 3500000.0
+  ? h3 = 2500000.0
+  ? h4 = 1350000.0
+
+  # entropies (J/kg-K)
+  ? s1 = 3500.0
+  ? s2 = 6500.0
+  ? s3 = 6500.0
+  ? s4 = 1500.0
+
+  # other
+  ? x3 = 0.9
+  ? S_dot_gen = 1000.0
+  ? S_dot_gen_cond = 500.0
+  ? S_dot_gen_b = 500.0
+
+report:
+  # inputs
+  T_H, T_C, P_b
+  W_dot_net, W_dot_net_kW
+
+  # states
+  T1, P1, h1, s1
+  T2, P2, h2, s2
+  T3, P3, h3, s3, x3
+  T4, P4, h4, s4
+
+  # per-mass balances
+  w_p_per_kg
+  w_t_per_kg
+  q_b_per_kg
+  q_cond_per_kg
+  W_dot_net_per_kg
+  check_1
+
+  # rates
+  m_dot
+  W_dot_p_kW, W_dot_t_kW
+  Q_dot_b_kW, Q_dot_cond_kW
+
+  # performance
+  bwr
+  eta_Rankine
+  heat_rate_BtupkWhr
+
+  # limits + lost work
+  eta_max
+  W_dot_max
+  W_dot_lost
+  S_dot_gen
+  check_2
+
+  # component entropy generation
+  S_dot_gen_cond
+  S_dot_gen_b
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 0.0000000001
+  max_iter = 900
+  max_restarts = 2

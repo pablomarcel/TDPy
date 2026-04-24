@@ -1,0 +1,10 @@
+# props_air_TP.txt
+problem_type = thermo_props
+fluid = HEOS::Air
+
+# --- given (two independent props) ---
+T_K = 300
+P_bar = 1.01325
+
+# --- ask / outputs ---
+ask = T,P,Hmass,Smass,Dmass,Cpmass,Cvmass,A

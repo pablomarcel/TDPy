@@ -1,0 +1,65 @@
+title: Klein & Nellis §12.3.3 — Psychrometric Properties in EES (HAPropsSI) — TDPy
+
+given:
+  # Inputs (match the EES listing)
+  T = 25.0 + 273.15                 # K
+  P = 101.3e3                       # Pa
+  phi = 0.40                        # -
+
+equations:
+  # Primary psychrometric properties (AirH2O via HAPropsSI)
+  omega = HAPropsSI("W","T",T,"P",P,"R",phi)
+  T_dp  = HAPropsSI("Tdp","T",T,"P",P,"R",phi)
+  T_wb  = HAPropsSI("Twb","T",T,"P",P,"R",phi)
+  h_av  = HAPropsSI("H","T",T,"P",P,"R",phi)
+  v_av  = HAPropsSI("V","T",T,"P",P,"R",phi)
+
+  # Unit conversions
+  T_dp_C = T_dp - 273.15
+  T_wb_C = T_wb - 273.15
+
+  # Same enthalpy computed with alternate input pairs (should match h_av)
+  h_av_2 = HAPropsSI("H","T",T,"P",P,"W",omega)
+  h_av_3 = HAPropsSI("H","T",T,"P",P,"Tdp",T_dp)
+  h_av_4 = HAPropsSI("H","T",T,"P",P,"Twb",T_wb)
+
+  # Differences (sanity checks; should be ~0)
+  dh2 = h_av_2 - h_av
+  dh3 = h_av_3 - h_av
+  dh4 = h_av_4 - h_av
+
+guesses:
+  # Reasonable initial guesses for 25°C, 40% RH at ~1 atm
+  ? omega = 0.008
+  ? T_dp  = 284.0
+  ? T_wb  = 290.0
+  ? h_av  = 50000.0
+  ? v_av  = 0.85
+
+  ? T_dp_C = 11.0
+  ? T_wb_C = 17.0
+
+  ? h_av_2 = 50000.0
+  ? h_av_3 = 50000.0
+  ? h_av_4 = 50000.0
+
+  ? dh2 = 0.0
+  ? dh3 = 0.0
+  ? dh4 = 0.0
+
+report:
+  T, P, phi
+  omega
+  T_dp, T_dp_C
+  T_wb, T_wb_C
+  h_av
+  v_av
+  h_av_2, h_av_3, h_av_4
+  dh2, dh3, dh4
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 200
+  max_restarts = 2

@@ -1,0 +1,152 @@
+title: Klein & Nellis §10.6.1 — Fugacity of CO2 at 100°C, 10,000 kPa — RKS vs PR vs CoolProp AbstractState — TDPy (fixed)
+
+given:
+  # --- universal constants ---
+  R_u = 8314.462618                 # J/(kmol*K)
+
+  # --- state ---
+  fluid = CarbonDioxide
+  T = 373.15                        # K  (100 C)
+  P = 10000.0e3                     # Pa (10,000 kPa)
+
+  # --- CO2 properties (unrolled; stable values) ---
+  MW = 44.0095                      # kg/kmol
+  R  = R_u/MW                       # J/(kg*K)
+
+  T_crit = 304.1282                 # K
+  P_crit = 7.3773e6                 # Pa
+  omega  = 0.22394                  # -
+
+  # --- reduced vars ---
+  T_r = T/T_crit
+  P_r = P/P_crit
+
+  # --- RKS parameters (Soave-Redlich-Kwong, as in book) ---
+  m_rks = 0.480 + 1.574*omega - 0.176*omega**2
+  alpha_rks = (1.0 + m_rks*(1.0 - sqrt(T_r)))**2
+  a_rks = 0.42748*alpha_rks*(R**2)*(T_crit**2)/P_crit
+  b_rks = 0.08664*R*T_crit/P_crit
+  BB_rks = b_rks*P/(R*T)
+
+  # --- PR parameters (Peng-Robinson) ---
+  m_pr = 0.37464 + 1.54226*omega - 0.26992*omega**2
+  alpha_pr = (1.0 + m_pr*(1.0 - sqrt(T_r)))**2
+  a_pr = 0.45724*alpha_pr*(R**2)*(T_crit**2)/P_crit
+  b_pr = 0.07780*R*T_crit/P_crit
+  A_pr = a_pr*P/((R**2)*(T**2))
+  B_pr = b_pr*P/(R*T)
+
+  # --- handy constants (numeric, to avoid constant-resolver ordering issues) ---
+  sqrt2 = 1.4142135623730951
+  onep  = 2.414213562373095
+  onem  = -0.41421356237309515
+
+  # --- ideal-gas reference (for initial guess sanity) ---
+  v_ideal = R*T/P
+
+equations:
+  # ================= RKS EOS (solve v) =================
+  1.0 = (R*T/(v_rks - b_rks) - a_rks/(v_rks*(v_rks + b_rks)))/P
+  Z_rks = P*v_rks/(R*T)
+  ln_phi_rks = Z_rks - 1.0 - ln(Z_rks - BB_rks) - (a_rks/(b_rks*R*T))*ln((Z_rks + BB_rks)/Z_rks)
+  phi_rks = exp(ln_phi_rks)
+  f_rks = phi_rks*P
+
+  # ================= PR EOS (solve Z) =================
+  Z_pr**3 - (1.0 - B_pr)*Z_pr**2 + (A_pr - 3.0*B_pr**2 - 2.0*B_pr)*Z_pr - (A_pr*B_pr - B_pr**2 - B_pr**3) = 0.0
+  ln_phi_pr = Z_pr - 1.0 - ln(Z_pr - B_pr) - (A_pr/(2.0*sqrt2*B_pr))*ln((Z_pr + onep*B_pr)/(Z_pr + onem*B_pr))
+  phi_pr = exp(ln_phi_pr)
+  f_pr = phi_pr*P
+
+  # ================= CoolProp references =================
+  v_cp = 1.0/PropsSI("D","T",T,"P",P,fluid)
+  Z_cp = PropsSI("Z","T",T,"P",P,fluid)
+
+  # AbstractState (CoolProp) fugacity coefficient and fugacity
+  ln_phi_as = ASPropsSI("ln_phi","T",T,"P",P,fluid)
+  phi_as = exp(ln_phi_as)
+  f_as = ASPropsSI("fugacity","T",T,"P",P,fluid)
+  f_as_check = phi_as*P
+
+  # ================= comparisons =================
+  dv_rks = v_rks - v_cp
+  dZ_rks = Z_rks - Z_cp
+  dlnphi_rks = ln_phi_rks - ln_phi_as
+  df_rks = f_rks - f_as
+
+  dZ_pr = Z_pr - Z_cp
+  dlnphi_pr = ln_phi_pr - ln_phi_as
+  df_pr = f_pr - f_as
+
+guesses:
+  # NOTE: guesses must be numeric (no symbolic references), otherwise they are ignored.
+
+  # RKS
+  ? v_rks = 0.00705
+  ? Z_rks = 0.77
+  ? ln_phi_rks = -0.05
+  ? phi_rks = 0.95
+  ? f_rks = 9.5e6
+
+  # PR
+  ? Z_pr = 0.77
+  ? ln_phi_pr = -0.05
+  ? phi_pr = 0.95
+  ? f_pr = 9.5e6
+
+  # CoolProp refs (warm-start will overwrite)
+  ? v_cp = 0.00705
+  ? Z_cp = 0.77
+
+  # AbstractState refs (warm-start will overwrite)
+  ? ln_phi_as = -0.05
+  ? phi_as = 0.95
+  ? f_as = 9.5e6
+  ? f_as_check = 9.5e6
+
+  # diffs
+  ? dv_rks = 0.0
+  ? dZ_rks = 0.0
+  ? dlnphi_rks = 0.0
+  ? df_rks = 0.0
+  ? dZ_pr = 0.0
+  ? dlnphi_pr = 0.0
+  ? df_pr = 0.0
+
+report:
+  # inputs
+  fluid
+  T, P
+  T_crit, P_crit, omega
+  T_r, P_r
+
+  # constants
+  R, v_ideal
+  a_rks, b_rks, BB_rks
+  a_pr, b_pr, A_pr, B_pr
+
+  # RKS results
+  v_rks, Z_rks
+  ln_phi_rks, phi_rks
+  f_rks
+
+  # PR results
+  Z_pr
+  ln_phi_pr, phi_pr
+  f_pr
+
+  # CoolProp references
+  v_cp, Z_cp
+  ln_phi_as, phi_as
+  f_as, f_as_check
+
+  # deltas
+  dv_rks, dZ_rks, dlnphi_rks, df_rks
+  dZ_pr, dlnphi_pr, df_pr
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 800
+  max_restarts = 2

@@ -1,0 +1,140 @@
+title: Klein & Nellis — Section 8.3.1 — Basic Gas Turbine — TDPy
+
+given:
+  # ---------------- input conditions (primitives unrolled) ----------------
+  T_amb = 293.15              # K  (20 C)
+  P_atm = 101325.0            # Pa (1 atm)
+  AF = 45.0                   # air-fuel ratio (mass basis)
+  PR = 5.0                    # pressure ratio
+  HC = 50000000.0             # J/kg  (50 MJ/kg)
+
+  # ---------------- performance parameters ----------------
+  eta_gt = 0.88               # gasifier turbine efficiency
+  eta_pt = 0.82               # power turbine efficiency
+  eta_c = 0.85                # compressor isentropic efficiency
+
+equations:
+  # ---------------- convenient constants ----------------
+  invAF = 1.0 / AF
+  m_ratio_gas = 1.0 + invAF   # (1 + 1/AF)
+
+  # ---------------- State 1 (ambient) ----------------
+  T1 = T_amb
+  P1 = P_atm
+  h1 = PropsSI("HMASS","T",T1,"P",P1,"Air")
+  s1 = PropsSI("SMASS","T",T1,"P",P1,"Air")
+
+  # ---------------- State 2 (compressor exit) ----------------
+  P2 = PR * P1
+  s_s2 = s1
+  h_s2 = PropsSI("HMASS","P",P2,"SMASS",s_s2,"Air")
+  w_s_c_per_kg = h_s2 - h1
+  w_c_per_kg = w_s_c_per_kg / eta_c
+  h2 = h1 + w_c_per_kg
+  T2 = PropsSI("T","P",P2,"HMASS",h2,"Air")
+  s2 = PropsSI("SMASS","P",P2,"HMASS",h2,"Air")
+
+  # ---------------- State 3 (combustor exit / gasifier turbine inlet) ----------------
+  # combustor energy balance (per kg of air):
+  #   h2 + HC/AF = h3*(1 + 1/AF)
+  P3 = P2
+  h2 + HC / AF = h3 * m_ratio_gas
+  T3 = PropsSI("T","P",P3,"HMASS",h3,"Air")
+  s3 = PropsSI("SMASS","P",P3,"HMASS",h3,"Air")
+
+  # ---------------- State 4 (gasifier turbine exit) ----------------
+  # unknown P4 is solved by matching gasifier turbine power to compressor power
+  s_s4 = s3
+  h_s4 = PropsSI("HMASS","P",P4,"SMASS",s_s4,"Air")
+
+  w_s_gt_per_kg = (h3 - h_s4) * m_ratio_gas
+  w_gt_per_kg = eta_gt * w_s_gt_per_kg
+
+  h4 = h3 - w_gt_per_kg / m_ratio_gas
+  T4 = PropsSI("T","P",P4,"HMASS",h4,"Air")
+  s4 = PropsSI("SMASS","P",P4,"HMASS",h4,"Air")
+
+  # power match: gasifier turbine drives compressor
+  w_gt_per_kg = w_c_per_kg
+
+  # ---------------- State 5 (power turbine exit to atmosphere) ----------------
+  P5 = P_atm
+  s_s5 = s4
+  h_s5 = PropsSI("HMASS","P",P5,"SMASS",s_s5,"Air")
+
+  w_s_pt_per_kg = (h4 - h_s5) * m_ratio_gas
+  w_pt_per_kg = eta_pt * w_s_pt_per_kg
+
+  h5 = h4 - w_pt_per_kg / m_ratio_gas
+  T5 = PropsSI("T","P",P5,"HMASS",h5,"Air")
+  s5 = PropsSI("SMASS","P",P5,"HMASS",h5,"Air")
+
+  # ---------------- checks + performance ----------------
+  check_1 = h1 + HC / AF - w_pt_per_kg - h5 * m_ratio_gas
+
+  eta = w_pt_per_kg / (HC / AF)
+
+  BWR = w_c_per_kg / (w_pt_per_kg + w_gt_per_kg)
+
+  # ---------------- optional: stoichiometric minimum air-fuel ratio ----------------
+  x_stoich = 2.0 / 0.21
+  M_air = PropsSI("M","T",T_amb,"P",P_atm,"Air")
+  M_ch4 = PropsSI("M","T",T_amb,"P",P_atm,"Methane")
+  AF_min = x_stoich * M_air / M_ch4
+
+guesses:
+  # key unknown solved by power match
+  ? P4 = 303975.0
+
+  # helpful guesses for thermo states (rough magnitudes)
+  ? h2 = 350000.0
+  ? h3 = 1200000.0
+  ? h4 = 900000.0
+  ? h5 = 700000.0
+
+  ? T2 = 450.0
+  ? T3 = 1400.0
+  ? T4 = 1100.0
+  ? T5 = 800.0
+
+  ? w_c_per_kg = 200000.0
+  ? w_gt_per_kg = 200000.0
+  ? w_pt_per_kg = 250000.0
+
+  ? eta = 0.25
+  ? BWR = 0.45
+  ? check_1 = 0.0
+
+report:
+  # inputs
+  T_amb, P_atm
+  AF, PR, HC
+  eta_gt, eta_pt, eta_c
+
+  # state points
+  T1, P1, h1, s1
+  T2, P2, h2, s2
+  T3, P3, h3, s3
+  T4, P4, h4, s4
+  T5, P5, h5, s5
+
+  # work terms per kg of air
+  w_s_c_per_kg
+  w_c_per_kg
+  w_s_gt_per_kg
+  w_gt_per_kg
+  w_s_pt_per_kg
+  w_pt_per_kg
+
+  # results
+  eta
+  BWR
+  check_1
+  AF_min
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 0.0000000001
+  max_iter = 600
+  max_restarts = 2

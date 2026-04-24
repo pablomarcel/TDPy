@@ -1,0 +1,119 @@
+title: Klein & Nellis §12.2 — Wet-Bulb and Adiabatic Saturation Temperatures (solve inlet RH) — TDPy
+
+given:
+  # Inputs (unrolled unit conversions)
+  # 68°F = 20°C = 293.15 K
+  T1 = (68.0 - 32.0)*(5.0/9.0) + 273.15          # K  inlet dry-bulb
+  # 50°F = 10°C = 283.15 K
+  T2 = (50.0 - 32.0)*(5.0/9.0) + 273.15          # K  adiabatic saturation temperature
+  P  = 1.0*101325.0                               # Pa (1 atm)
+
+  # Humidity-ratio constant (ratio of molecular weights: Mw_vapor/Mw_dryair)
+  eps = 0.621945                                  # -
+
+equations:
+  # --- saturation pressures (Water) ---
+  P_sat1 = PropsSI("P","T",T1,"Q",0,"Water")
+  P_sat2 = PropsSI("P","T",T2,"Q",0,"Water")
+
+  # --- vapor partial pressure at state 1 ---
+  P_v1 = phi1*P_sat1
+
+  # --- humidity ratio formulas (book relations) ---
+  omega1_formula = eps*P_v1/(P - P_v1)
+  omega2_formula = eps*P_sat2/(P - P_sat2)        # state 2 is saturated: P_v2 = P_sat2
+
+  # --- humidity ratio from HAPropsSI (used by TDPy/CoolProp for consistency) ---
+  omega1 = HAPropsSI("W","T",T1,"P",P,"R",phi1)
+  omega2 = HAPropsSI("W","T",T2,"P",P,"R",1.0)
+
+  # --- consistency checks (should be ~0 if HAPropsSI and formula agree) ---
+  dOmega1 = omega1 - omega1_formula
+  dOmega2 = omega2 - omega2_formula
+
+  # --- moist-air enthalpy per kg dry air (J/kg_dryair) ---
+  h1 = HAPropsSI("H","T",T1,"P",P,"R",phi1)
+  h2 = HAPropsSI("H","T",T2,"P",P,"R",1.0)
+
+  # --- makeup water enthalpy (liquid water at T2, P) ---
+  h3 = PropsSI("H","T",T2,"P",P,"Water")
+
+  # --- adiabatic-saturation energy balance (book Eq. form) ---
+  # h1 + (omega2 - omega1)*h3 = h2
+  h1 + (omega2 - omega1)*h3 = h2
+
+  # --- wet-bulb temperature (for comparison; often ~ T2) ---
+  Twb1 = HAPropsSI("Twb","T",T1,"P",P,"R",phi1)
+  dTwb_K = Twb1 - T2
+
+  # --- convenience conversions (reporting) ---
+  T1_F = (T1 - 273.15)*(9.0/5.0) + 32.0
+  T2_F = (T2 - 273.15)*(9.0/5.0) + 32.0
+  Twb1_F = (Twb1 - 273.15)*(9.0/5.0) + 32.0
+
+  DT_wb = T1 - Twb1
+  DT_wb_F = DT_wb*(9.0/5.0)
+
+  phi1_pct = 100.0*phi1
+
+guesses:
+  # Primary unknown
+  ? phi1 = 0.50
+
+  # Start near saturation-curve values
+  ? P_sat1 = 2300.0
+  ? P_sat2 = 1200.0
+  ? P_v1 = 1200.0
+
+  ? omega1_formula = 0.007
+  ? omega2_formula = 0.0075
+  ? omega1 = 0.007
+  ? omega2 = 0.0075
+  ? dOmega1 = 0.0
+  ? dOmega2 = 0.0
+
+  ? h1 = 4.0e4
+  ? h2 = 3.0e4
+  ? h3 = 4.0e4
+
+  ? Twb1 = T2
+  ? dTwb_K = 0.0
+
+  ? T1_F = 68.0
+  ? T2_F = 50.0
+  ? Twb1_F = 50.0
+  ? DT_wb = 5.0
+  ? DT_wb_F = 9.0
+
+  ? phi1_pct = 50.0
+
+report:
+  # Inputs
+  T1, T2, P
+  T1_F, T2_F
+
+  # Solved inlet RH
+  phi1, phi1_pct
+
+  # Saturation / vapor pressures
+  P_sat1, P_v1, P_sat2
+
+  # Humidity ratios
+  omega1, omega2
+  omega1_formula, omega2_formula
+  dOmega1, dOmega2
+
+  # Enthalpies
+  h1, h2, h3
+
+  # Wet-bulb comparison
+  Twb1, Twb1_F
+  dTwb_K
+  DT_wb, DT_wb_F
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 400
+  max_restarts = 2

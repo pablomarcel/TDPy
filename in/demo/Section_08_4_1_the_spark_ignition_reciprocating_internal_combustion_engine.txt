@@ -1,0 +1,188 @@
+title: Klein & Nellis — Section 8.4.1 — Spark-Ignition IC Engine (ideal-gas air, constant gamma) — TDPy (robust for GEKKO + SciPy)
+
+# Why your GEKKO run "solved" but ok=false:
+# - Your equations were mostly written in residual form:   expr = 0
+# - In solver.py, GEKKO's ok-check scales residual-form equations with denom=1 (absolute check),
+#   so even tiny absolute residuals (1e-4) fail a tight tol (1e-9).
+# - Fix: write equations as assignments:  var = expression
+#   Then GEKKO scales by max(1, |lhs|, |rhs|), which is what you want for big-number equations (P ~ 1e7).
+#
+# Also: keep T1 and P1 as residual equations so the interpreter doesn't constant-fold the entire model
+# into n_equations=0, n_unknowns=0.
+
+solve:
+  backend: scipy
+  method: hybr
+  tol: 0.0000000001
+  max_iter: 4000
+  max_restarts: 2
+
+given:
+  bore = 0.1016
+  stroke = 0.0889
+  CR = 8.3
+  N_cyl = 4.0
+  N = 60.0
+
+  AF = 16.0
+  HC = 44000000.0
+
+  T_amb = 305.15
+  P_amb = 100000.0
+
+  R_air = 287.058
+  gamma = 1.4
+
+  pi = 3.141592653589793
+  W_to_hp = 0.00134102209
+  W_to_kW = 0.001
+
+  Vol_dis_cyl = pi * bore * bore * stroke / 4.0
+  Vol_cl = Vol_dis_cyl / (CR - 1.0)
+  Vol_BDC = Vol_dis_cyl + Vol_cl
+  Vol_TDC = Vol_cl
+
+  cv = R_air / (gamma - 1.0)
+  CR_km1 = CR ** (gamma - 1.0)
+  CR_k = CR ** gamma
+
+guesses:
+  ? T1 = 305.15
+  ? P1 = 100000.0
+
+  ? v1 = 0.8759574870107
+  ? m1 = 0.0009355160903037
+  ? u1 = 218989.37175
+
+  ? m2 = 0.0009355160903037
+  ? v2 = 0.1055370466265
+  ? T2 = 711.4503727429
+  ? P2 = 1935126.3620402
+  ? u2 = 510568.8027470
+
+  ? W_comp = 272.7772492993
+
+  ? m_in = 0.0008228033083394
+  ? m_f = 0.0000484001946082
+
+  ? u3 = 2786968.5192602
+  ? T3 = 3883.4918647244
+  ? P3 = 10562996.0600402
+
+  ? T4 = 1665.6784336930
+  ? P4 = 545855.6230356
+  ? u4 = 1195365.7995476
+
+  ? W_exp = 1488.9699536622
+  ? W_net = 1216.1927043629
+
+  ? eta = 0.5710874409644
+  ? W_dot_net = 145943.1245235
+  ? W_dot_net_hp = 195.7129538697
+  ? W_dot_net_kW = 145.9431245235
+
+  ? BWR = 0.1831986257536
+  ? MEP = 1687420.5571249
+  ? MEP_kPa = 1687.4205571249
+
+equations:
+  # Keep these two as residual equations to prevent constant-folding into "no equations".
+  T1 - T_amb = 0.0
+  P1 - P_amb = 0.0
+
+  # State 1
+  v1 = R_air * T1 / P1
+  m1 = Vol_BDC / v1
+  u1 = cv * T1
+
+  # State 2 (isentropic compression)
+  m2 = m1
+  v2 = Vol_TDC / m2
+  T2 = T1 * CR_km1
+  P2 = P1 * CR_k
+  u2 = cv * T2
+  W_comp = m2 * (u2 - u1)
+
+  # Intake and fuel (per cylinder, per cycle)
+  m_in = (Vol_BDC - Vol_TDC) / v1
+  m_f = m_in / (AF + 1.0)
+
+  # State 3 (constant-volume heat addition)
+  u3 = u2 + (m_f * HC) / m2
+  T3 = u3 / cv
+  P3 = P2 * (T3 / T2)
+
+  # State 4 (isentropic expansion)
+  T4 = T3 / CR_km1
+  P4 = P3 / CR_k
+  u4 = cv * T4
+
+  W_exp = m2 * (u3 - u4)
+
+  # Performance
+  W_net = W_exp - W_comp
+  eta = W_net / (m_f * HC)
+
+  W_dot_net = W_net * N_cyl * N / 2.0
+  W_dot_net_hp = W_dot_net * W_to_hp
+  W_dot_net_kW = W_dot_net * W_to_kW
+
+  BWR = W_comp / W_exp
+  MEP = W_net / Vol_dis_cyl
+  MEP_kPa = MEP / 1000.0
+
+report:
+  bore
+  stroke
+  CR
+  N_cyl
+  N
+  AF
+  HC
+  T_amb
+  P_amb
+  R_air
+  gamma
+
+  Vol_dis_cyl
+  Vol_cl
+  Vol_BDC
+  Vol_TDC
+
+  cv
+  CR_km1
+  CR_k
+
+  T1
+  P1
+  v1
+  m1
+  u1
+
+  T2
+  P2
+  v2
+  m2
+  u2
+
+  m_in
+  m_f
+
+  T3
+  P3
+  u3
+
+  T4
+  P4
+  u4
+
+  W_comp
+  W_exp
+  W_net
+  eta
+
+  W_dot_net_kW
+  W_dot_net_hp
+
+  BWR
+  MEP_kPa

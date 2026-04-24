@@ -1,0 +1,44 @@
+title: Klein & Nellis §10.6.2 — Fugacity of Liquids (Water @ 25°C, 1 MPa) — Poynting factor — TDPy
+
+given:
+  # --- universal constants ---
+  R_u = 8314.462618                  # J/(kmol*K)
+
+  # --- fluid + state (unrolled) ---
+  fluid = 'Water'
+  T = 25.0 + 273.15                  # K
+  P = 1.0e6                          # Pa  (1 MPa)
+
+  # --- water molecular weight + gas constant (mass basis) ---
+  MW = 18.01528                      # kg/kmol
+  R  = R_u/MW                        # J/(kg*K)
+
+equations:
+  # specific volume at (T,P) from CoolProp (EES "volume")
+  v = 1.0/PropsSI("D","T",T,"P",P,fluid)
+
+  # saturation pressure at T (EES "P_sat")
+  P_sat = PropsSI("P","T",T,"Q",0,fluid)
+
+  # exponential (Poynting) factor: exp( v*(P-P_sat)/(R*T) )
+  expfactor = exp( v*(P - P_sat)/(R*T) )
+
+guesses:
+  ? v = 0.001
+  ? P_sat = 3200.0
+  ? expfactor = 1.007
+
+report:
+  fluid
+  T, P
+  MW, R
+  v
+  P_sat
+  expfactor
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-12
+  max_iter = 200
+  max_restarts = 2

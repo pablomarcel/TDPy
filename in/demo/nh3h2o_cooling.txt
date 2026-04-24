@@ -1,0 +1,54 @@
+title: NH3H2O minimal sanity test — (T,P,X) => Hmass,Q using PropsSI + NH3H2O fluid spec
+
+given:
+  # Inputs (human units)
+  T_C     = 10.0
+  P_kPa   = 1000.0
+  x_NH3   = 0.5
+
+  # Unit conversions
+  C_to_K     = 273.15
+  kPa_to_Pa  = 1000.0
+  J_to_kJ    = 0.001
+
+  # IMPORTANT:
+  # Use PropsSI + special NH3H2O fluid string so we don't depend on a separate NH3H2OPropsSI symbol.
+  # coolprop_backend intercepts this and routes to the native NH3H2O backend.
+  #
+  # strict=1 -> raise on invalid region / failure
+  # strict=0 -> allow NaN (not recommended for a sanity test)
+  fluid = "NH3H2O|X=0.5|strict=1"
+
+guess:
+  # Critical: give T and P reasonable initial guesses so the *first* PropsSI evaluation is valid.
+  T = 283.15
+  P = 1.0e6
+
+  # Property guesses (not strictly needed, but helps with solver stability/logs)
+  h = -1.95e5
+  Q = 0.0
+  h_kJkg = -195.0
+
+equations:
+  # Convert to SI
+  T = T_C + C_to_K
+  P = P_kPa * kPa_to_Pa
+
+  # Native NH3H2O via PropsSI intercept (T,P provided; X embedded in fluid string)
+  h = PropsSI("Hmass","T",T,"P",P, fluid)
+  Q = PropsSI("Q","T",T,"P",P, fluid)
+
+  # Convenience reporting unit conversion
+  h_kJkg = h * J_to_kJ
+
+report:
+  T_C, P_kPa, x_NH3
+  T, P
+  h_kJkg
+  Q
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 80

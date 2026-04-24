@@ -1,0 +1,63 @@
+title: Klein & Nellis §13.3.5 — Adiabatic Reaction (Acetylene + Air → CO2 + H2O + N2) — TDPy
+
+given:
+  # --- constants ---
+  atm_to_Pa = 101325.0                # Pa/atm
+  P_ref = atm_to_Pa                   # Pa (reference pressure for ideal-gas species in Cantera)
+
+  # --- inlet temperature ---
+  T_in = 25.0 + 273.15                # K
+
+  # --- stoichiometric reaction (per 1 kmol C2H2 fuel) ---
+  # C2H2 + a_s*(0.21 O2 + 0.79 N2) -> b_s CO2 + c_s H2O + d_s N2
+  b_s = 2.0                           # carbon balance: 2 C -> 2 CO2
+  c_s = 1.0                           # hydrogen balance: 2 H -> 1 H2O
+  a_s = (2.0*b_s + c_s) / (2.0*0.21)  # oxygen balance: 2*0.21*a_s = 2*b_s + c_s
+  d_s = 0.79*a_s                      # nitrogen balance: 2*0.79*a_s = 2*d_s  => d_s=0.79*a_s
+
+equations:
+  # --- reactant molar enthalpies at T_in ---
+  h_bar_C2H2_in = CTPropsSI("HMOLAR","T",T_in,"P",P_ref,"gri30.yaml|X=C2H2:1")
+  h_bar_O2_in   = CTPropsSI("HMOLAR","T",T_in,"P",P_ref,"gri30.yaml|X=O2:1")
+  h_bar_N2_in   = CTPropsSI("HMOLAR","T",T_in,"P",P_ref,"gri30.yaml|X=N2:1")
+
+  # total molar enthalpy of reactants (per kmol fuel)
+  H_R = h_bar_C2H2_in + 0.21*a_s*h_bar_O2_in + 0.79*a_s*h_bar_N2_in
+
+  # --- product molar enthalpies at unknown T_out ---
+  h_bar_CO2_out = CTPropsSI("HMOLAR","T",T_out,"P",P_ref,"gri30.yaml|X=CO2:1")
+  h_bar_H2O_out = CTPropsSI("HMOLAR","T",T_out,"P",P_ref,"gri30.yaml|X=H2O:1")
+  h_bar_N2_out  = CTPropsSI("HMOLAR","T",T_out,"P",P_ref,"gri30.yaml|X=N2:1")
+
+  # total molar enthalpy of products (per kmol fuel)
+  H_P = b_s*h_bar_CO2_out + c_s*h_bar_H2O_out + d_s*h_bar_N2_out
+
+  # adiabatic energy balance
+  err = H_R - H_P
+  err = 0.0
+
+  # convenience
+  T_out_C = T_out - 273.15
+
+guesses:
+  ? T_out = 1000.0
+  ? err = 0.0
+  ? T_out_C = 726.85
+
+report:
+  # inputs / stoichiometry
+  T_in
+  a_s, b_s, c_s, d_s
+
+  # solution
+  T_out, T_out_C
+
+  # enthalpy check
+  H_R, H_P, err
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 400
+  max_restarts = 2

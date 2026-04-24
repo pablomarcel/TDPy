@@ -1,0 +1,173 @@
+title: Klein & Nellis — Section 9.5.1 — Reverse Brayton Cycle (Neon) — TDPy
+
+given:
+  # ---------------- constants / unrolled primitives ----------------
+  fluid = Neon
+
+  # unit conversions (unrolled)
+  atm_to_Pa = 101325                  # Pa/atm
+  liter_per_min_to_m3_per_s = 0.000000016666666666667  # (1 L/min) = (0.001/60) m^3/s
+
+  # compressor + machine efficiencies
+  V_dot_disp = 0.00075                # m^3/s  (45 liter/min)
+  eta_vol = 0.75
+  eta_c = 0.72
+  eta_t = 0.68
+
+  # temperatures
+  T_amb = 295.15                      # K (22 C)
+  DT_ac = 4                           # K
+  T_C = 60                            # K
+  DT_LHX = 1                          # K
+  DT_rec = 5                          # K
+
+  # pressures
+  P_low = 202650                      # Pa (2 atm)
+  PR = 1.9
+
+equations:
+  # ---------------- derived pressure level ----------------
+  P_high = P_low * PR
+
+  # ---------------- State 3: Aftercooler exit / Recuperator inlet (high pressure) ----------------
+  T3 = T_amb + DT_ac
+  P3 = P_high
+  s3 = PropsSI("SMASS","T",T3,"P",P3,fluid)
+  h3 = PropsSI("HMASS","T",T3,"P",P3,fluid)
+
+  # ---------------- State 6: Load HX exit / Recuperator inlet (low pressure) ----------------
+  T6 = T_C - DT_LHX
+  P6 = P_low
+  s6 = PropsSI("SMASS","T",T6,"P",P6,fluid)
+  h6 = PropsSI("HMASS","T",T6,"P",P6,fluid)
+
+  # ---------------- State 1: Compressor inlet / Recuperator outlet (low pressure) ----------------
+  T1 = T3 - DT_rec
+  P1 = P_low
+  s1 = PropsSI("SMASS","T",T1,"P",P1,fluid)
+  h1 = PropsSI("HMASS","T",T1,"P",P1,fluid)
+  rho1 = PropsSI("D","T",T1,"P",P1,fluid)
+  v1 = 1.0 / rho1
+
+  # ---------------- State 4: Turbine inlet / Recuperator exit (high pressure) ----------------
+  # recuperator energy balance: h6 + h3 = h1 + h4
+  h6 + h3 = h1 + h4
+  P4 = P_high
+  T4 = PropsSI("T","P",P4,"HMASS",h4,fluid)
+  s4 = PropsSI("SMASS","P",P4,"HMASS",h4,fluid)
+
+  # ---------------- State 2: Compressor exit / Aftercooler inlet (high pressure) ----------------
+  P2 = P_high
+  s_s2 = s1
+  h_s2 = PropsSI("HMASS","P",P2,"SMASS",s_s2,fluid)
+  w_s_c_per_kg = h_s2 - h1
+  w_c_per_kg = w_s_c_per_kg / eta_c
+  h2 = h1 + w_c_per_kg
+  T2 = PropsSI("T","P",P2,"HMASS",h2,fluid)
+  s2 = PropsSI("SMASS","P",P2,"HMASS",h2,fluid)
+
+  # ---------------- State 5: Turbine exit / Load HX inlet (low pressure) ----------------
+  P5 = P_low
+  s_s5 = s4
+  h_s5 = PropsSI("HMASS","P",P5,"SMASS",s_s5,fluid)
+  w_s_t_per_kg = h4 - h_s5
+  w_t_per_kg = w_s_t_per_kg * eta_t
+  h5 = h4 - w_t_per_kg
+  T5 = PropsSI("T","P",P5,"HMASS",h5,fluid)
+  s5 = PropsSI("SMASS","P",P5,"HMASS",h5,fluid)
+
+  # ---------------- mass flow + power + heat rates ----------------
+  m_dot = V_dot_disp * eta_vol / v1
+
+  W_dot_c = w_c_per_kg * m_dot
+  W_dot_t = w_t_per_kg * m_dot
+
+  Q_dot_load = m_dot * (h6 - h5)
+  Q_dot_ac = m_dot * (h2 - h3)
+
+  # ---------------- COPs ----------------
+  COP = Q_dot_load / (W_dot_c - W_dot_t)
+  COP_nt = Q_dot_load / W_dot_c
+  COP_Carnot = T_C / (T_amb - T_C)
+
+  # ---------------- recuperator effectiveness ----------------
+  Q_dot_rec = m_dot * (h1 - h6)
+  T_1_max = T3
+  h_1_max = PropsSI("HMASS","T",T_1_max,"P",P1,fluid)
+  Q_dot_rec_max = m_dot * (h_1_max - h6)
+  eff_rec = Q_dot_rec / Q_dot_rec_max
+
+  # ---------------- entropy generation bookkeeping ----------------
+  H_dot_rec = m_dot * (h1 - h3)
+  Q_dot_load_over_T_C = Q_dot_load / T_C
+  S_dot_rec = m_dot * (s1 - s3)
+  S_dot_gen = S_dot_rec - Q_dot_load_over_T_C
+
+  # ---------------- convenient outputs ----------------
+  W_dot_c_kW = W_dot_c / 1000.0
+  W_dot_t_kW = W_dot_t / 1000.0
+  Q_dot_load_kW = Q_dot_load / 1000.0
+  Q_dot_ac_kW = Q_dot_ac / 1000.0
+
+guesses:
+  # state temperatures (K)
+  ? T2 = 330.0
+  ? T4 = 250.0
+  ? T5 = 120.0
+
+  # state enthalpies (J/kg)
+  ? h2 = 350000.0
+  ? h4 = 250000.0
+  ? h5 = 150000.0
+  ? h_s2 = 330000.0
+  ? h_s5 = 170000.0
+  ? h_1_max = 320000.0
+
+  # state entropies (J/kg-K)
+  ? s1 = 4000.0
+  ? s2 = 4200.0
+  ? s3 = 4200.0
+  ? s4 = 4100.0
+  ? s5 = 4300.0
+  ? s6 = 2500.0
+
+  # flow / power (rough magnitudes)
+  ? m_dot = 0.001
+  ? W_dot_c = 50.0
+  ? W_dot_t = 30.0
+  ? Q_dot_load = 100.0
+  ? Q_dot_ac = 80.0
+  ? COP = 0.3
+  ? COP_nt = 0.2
+  ? eff_rec = 0.8
+  ? S_dot_gen = 0.05
+
+report:
+  # inputs
+  fluid
+  V_dot_disp, eta_vol, eta_c, eta_t
+  T_amb, DT_ac, DT_rec, T_C, DT_LHX
+  P_low, PR, P_high
+
+  # states
+  T1, P1, h1, s1, v1
+  T2, P2, h2, s2, h_s2
+  T3, P3, h3, s3
+  T4, P4, h4, s4
+  T5, P5, h5, s5, h_s5
+  T6, P6, h6, s6
+
+  # performance
+  m_dot
+  W_dot_c_kW, W_dot_t_kW
+  Q_dot_load_kW, Q_dot_ac_kW
+  COP, COP_nt, COP_Carnot
+  Q_dot_rec, Q_dot_rec_max, eff_rec
+  S_dot_rec, S_dot_gen
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 0.0000000001
+  max_iter = 600
+  max_restarts = 2

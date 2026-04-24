@@ -1,0 +1,155 @@
+title: Klein & Nellis §13.5.1 — Exergy of Fuels (CH4 with environment species in air) — TDPy
+
+given:
+  # --- dead state ---
+  T_o = 25.0 + 273.15                 # K
+  P_o = 1.0 * 101325.0                # Pa
+
+  # --- surroundings composition (mole fractions) ---
+  y_N2_o  = 0.7686
+  y_O2_o  = 0.2062
+  y_Ar_o  = 0.0093
+  y_CO2_o = 0.0004
+  y_H2O_o = 0.0156
+
+  # --- excess air (actual reaction) ---
+  ea = 0.5
+
+  # --- molar mass (kg/kmol) ---
+  MW_CH4 = 16.043
+
+  # --- partial pressures in the surroundings (Pa) ---
+  P_N2_o  = P_o*y_N2_o
+  P_O2_o  = P_o*y_O2_o
+  P_Ar_o  = P_o*y_Ar_o
+  P_CO2_o = P_o*y_CO2_o
+  P_H2O_o = P_o*y_H2O_o
+
+  # ============================================================
+  # Stoichiometric reaction coefficients (solved explicitly)
+  # From O-balance simplification: a_s = 2 / y_O2_o
+  # ============================================================
+  a_s = 2.0 / y_O2_o
+  b_s = 1.0 + a_s*y_CO2_o
+  c_s = 2.0 + a_s*y_H2O_o
+  d_s = a_s*y_N2_o
+  e_s = a_s*y_Ar_o
+
+  # ============================================================
+  # Actual reaction coefficients (excess air)
+  # ============================================================
+  a = (1.0 + ea)*a_s
+  b = 1.0 + a*y_CO2_o
+  c = 2.0 + a*y_H2O_o
+  d = a*y_N2_o
+  e = a*y_Ar_o
+
+  # Solve for leftover O2 in products: f
+  f = (2.0*a*y_O2_o + 2.0*a*y_CO2_o + a*y_H2O_o - 2.0*b - c)/2.0
+
+  # --- unit helpers (avoid scientific notation parsing issues) ---
+  one_kmol = 1000.0
+  one_MJ = 1000000.0
+
+equations:
+  # --- molar enthalpies at dead state (J/kmol) ---
+  h_bar_CH4_o = CTPropsSI("HMOLAR","T",T_o,"P",P_o,"gri30.yaml|X=CH4:1")
+  h_bar_N2_o  = CTPropsSI("HMOLAR","T",T_o,"P",P_o,"gri30.yaml|X=N2:1")
+  h_bar_O2_o  = CTPropsSI("HMOLAR","T",T_o,"P",P_o,"gri30.yaml|X=O2:1")
+  h_bar_Ar_o  = CTPropsSI("HMOLAR","T",T_o,"P",P_o,"gri30.yaml|X=AR:1")
+  h_bar_CO2_o = CTPropsSI("HMOLAR","T",T_o,"P",P_o,"gri30.yaml|X=CO2:1")
+  h_bar_H2O_o = CTPropsSI("HMOLAR","T",T_o,"P",P_o,"gri30.yaml|X=H2O:1")
+
+  # --- molar entropies at dead state (J/kmol-K); use partial pressures for environment species ---
+  s_bar_CH4_o = CTPropsSI("SMOLAR","T",T_o,"P",P_o,"gri30.yaml|X=CH4:1")
+  s_bar_N2_o  = CTPropsSI("SMOLAR","T",T_o,"P",P_N2_o,"gri30.yaml|X=N2:1")
+  s_bar_O2_o  = CTPropsSI("SMOLAR","T",T_o,"P",P_O2_o,"gri30.yaml|X=O2:1")
+  s_bar_Ar_o  = CTPropsSI("SMOLAR","T",T_o,"P",P_Ar_o,"gri30.yaml|X=AR:1")
+  s_bar_CO2_o = CTPropsSI("SMOLAR","T",T_o,"P",P_CO2_o,"gri30.yaml|X=CO2:1")
+  s_bar_H2O_o = CTPropsSI("SMOLAR","T",T_o,"P",P_H2O_o,"gri30.yaml|X=H2O:1")
+
+  # --- enthalpy of reactants / products (per kmol CH4) ---
+  H_R = h_bar_CH4_o + a*y_N2_o*h_bar_N2_o + a*y_O2_o*h_bar_O2_o + a*y_Ar_o*h_bar_Ar_o + a*y_CO2_o*h_bar_CO2_o + a*y_H2O_o*h_bar_H2O_o
+  H_P = b*h_bar_CO2_o + c*h_bar_H2O_o + d*h_bar_N2_o + e*h_bar_Ar_o + f*h_bar_O2_o
+
+  # --- entropy of reactants / products (per kmol CH4) ---
+  S_R = s_bar_CH4_o + a*y_N2_o*s_bar_N2_o + a*y_O2_o*s_bar_O2_o + a*y_Ar_o*s_bar_Ar_o + a*y_CO2_o*s_bar_CO2_o + a*y_H2O_o*s_bar_H2O_o
+  S_P = b*s_bar_CO2_o + c*s_bar_H2O_o + d*s_bar_N2_o + e*s_bar_Ar_o + f*s_bar_O2_o
+
+  # --- exergy of fuel (per kmol CH4) ---
+  X_fuel = (H_R - H_P) - T_o*(S_R - S_P)
+  X_fuel_m = X_fuel / MW_CH4
+
+  X_fuel_MJ_per_kmol = X_fuel / one_MJ
+  X_fuel_MJ_per_kg = X_fuel_m / one_MJ
+
+  # --- check: exergy for the portion that actually reacts (CH4 + 2 O2 -> CO2 + 2 H2O) ---
+  H_R_2 = h_bar_CH4_o + 2.0*h_bar_O2_o
+  H_P_2 = h_bar_CO2_o + 2.0*h_bar_H2O_o
+  S_R_2 = s_bar_CH4_o + 2.0*s_bar_O2_o
+  S_P_2 = s_bar_CO2_o + 2.0*s_bar_H2O_o
+  X_fuel_2 = (H_R_2 - H_P_2) - T_o*(S_R_2 - S_P_2)
+  X_fuel_m_2 = X_fuel_2 / MW_CH4
+
+  dX_fuel = X_fuel - X_fuel_2
+  dX_fuel_m = X_fuel_m - X_fuel_m_2
+
+guesses:
+  # thermo (warm-start will overwrite)
+  ? h_bar_CH4_o = 0.0
+  ? h_bar_N2_o = 0.0
+  ? h_bar_O2_o = 0.0
+  ? h_bar_Ar_o = 0.0
+  ? h_bar_CO2_o = 0.0
+  ? h_bar_H2O_o = 0.0
+
+  ? s_bar_CH4_o = 0.0
+  ? s_bar_N2_o = 0.0
+  ? s_bar_O2_o = 0.0
+  ? s_bar_Ar_o = 0.0
+  ? s_bar_CO2_o = 0.0
+  ? s_bar_H2O_o = 0.0
+
+  # totals
+  ? H_R = 0.0
+  ? H_P = 0.0
+  ? S_R = 0.0
+  ? S_P = 0.0
+
+  # exergy
+  ? X_fuel = 800000000.0
+  ? X_fuel_m = 50000000.0
+  ? X_fuel_MJ_per_kmol = 800.0
+  ? X_fuel_MJ_per_kg = 50.0
+
+  # check
+  ? H_R_2 = 0.0
+  ? H_P_2 = 0.0
+  ? S_R_2 = 0.0
+  ? S_P_2 = 0.0
+  ? X_fuel_2 = 800000000.0
+  ? X_fuel_m_2 = 50000000.0
+  ? dX_fuel = 0.0
+  ? dX_fuel_m = 0.0
+
+report:
+  # inputs / environment
+  T_o, P_o
+  y_N2_o, y_O2_o, y_Ar_o, y_CO2_o, y_H2O_o
+  ea
+
+  # reaction coefficients
+  a_s, b_s, c_s, d_s, e_s
+  a, b, c, d, e, f
+
+  # exergy
+  X_fuel_MJ_per_kmol
+  X_fuel_MJ_per_kg
+  dX_fuel_m
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 400
+  max_restarts = 2

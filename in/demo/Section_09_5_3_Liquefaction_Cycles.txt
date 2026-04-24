@@ -1,0 +1,286 @@
+title: Klein & Nellis — Section 9.5.3 Liquefaction Cycles (Oxygen, 3-stage compression)
+
+given:
+  # -------------------- working fluid --------------------
+  fluid = Oxygen
+
+  # -------------------- unit conversions (unrolled) --------------------
+  atm_to_Pa = 101325.0
+  m3s_to_liter_per_hr = 3600000.0
+  J_per_kg_to_kJ_per_kg = 0.001
+
+  # -------------------- pressures (unrolled) --------------------
+  P_suction = 1.0*atm_to_Pa
+  P_discharge = 200.0*atm_to_Pa
+
+  # -------------------- compressor displacement rates (cfm -> m^3/s; unrolled) --------------------
+  V_dot_disp_1 = 0.009438948864
+  V_dot_disp_2 = 0.00141584233
+  V_dot_disp_3 = 0.000235973722
+
+  # -------------------- efficiencies --------------------
+  eta_vol_1 = 0.72
+  eta_c_1 = 0.76
+
+  eta_vol_2 = 0.75
+  eta_c_2 = 0.78
+
+  eta_vol_3 = 0.78
+  eta_c_3 = 0.80
+
+  # -------------------- temperatures --------------------
+  T_amb = 293.15
+  DT_ac = 5.0
+  DT_ic_1 = 5.0
+  DT_ic_2 = 5.0
+  DT_rec = 3.0
+
+  # -------------------- saturated quality flags --------------------
+  x10 = 1.0
+  x12 = 0.0
+
+equations:
+  # =========================================================
+  # State 7: Aftercooler exit / Recuperator high-pressure inlet
+  # =========================================================
+  T7 = T_amb + DT_ac
+  P7 = P_discharge
+  s7 = PropsSI("SMASS","T",T7,"P",P7,fluid)
+  h7 = PropsSI("HMASS","T",T7,"P",P7,fluid)
+
+  # =========================================================
+  # State 10: Liquid reservoir vapor outlet (sat vapor @ suction P)
+  # =========================================================
+  P10 = P_suction
+  T10 = PropsSI("T","P",P10,"Q",x10,fluid)
+  s10 = PropsSI("SMASS","P",P10,"Q",x10,fluid)
+  h10 = PropsSI("HMASS","P",P10,"Q",x10,fluid)
+
+  # =========================================================
+  # State 11: Recuperator low-pressure outlet / Mixing tee inlet
+  # =========================================================
+  T11 = T7 - DT_rec
+  P11 = P_suction
+  s11 = PropsSI("SMASS","T",T11,"P",P11,fluid)
+  h11 = PropsSI("HMASS","T",T11,"P",P11,fluid)
+
+  # =========================================================
+  # State 12: Liquid outlet (sat liquid @ suction P)
+  # =========================================================
+  P12 = P_suction
+  T12 = PropsSI("T","P",P12,"Q",x12,fluid)
+  s12 = PropsSI("SMASS","P",P12,"Q",x12,fluid)
+  h12 = PropsSI("HMASS","P",P12,"Q",x12,fluid)
+  rho12 = PropsSI("D","P",P12,"Q",x12,fluid)
+  v12 = 1.0/rho12
+
+  # =========================================================
+  # State 8: Recuperator high-pressure outlet / Valve inlet
+  # Recuperator energy balance: h7 + (1-f)h10 = h8 + (1-f)h11
+  # =========================================================
+  h7 + (1.0 - f)*h10 = h8 + (1.0 - f)*h11
+  P8 = P_discharge
+  T8 = PropsSI("T","P",P8,"HMASS",h8,fluid)
+  s8 = PropsSI("SMASS","P",P8,"HMASS",h8,fluid)
+
+  # =========================================================
+  # State 9: Valve exit / Liquid reservoir inlet (throttle)
+  # =========================================================
+  P9 = P_suction
+  h9 = h8
+  T9 = PropsSI("T","P",P9,"HMASS",h9,fluid)
+  s9 = PropsSI("SMASS","P",P9,"HMASS",h9,fluid)
+  x9 = PropsSI("Q","P",P9,"HMASS",h9,fluid)
+
+  # =========================================================
+  # Liquid reservoir energy balance: h9 = (1-f)h10 + f h12
+  # =========================================================
+  h9 = (1.0 - f)*h10 + f*h12
+
+  # =========================================================
+  # State 13: Makeup gas (ambient @ suction P)
+  # =========================================================
+  P13 = P_suction
+  T13 = T_amb
+  h13 = PropsSI("HMASS","T",T13,"P",P13,fluid)
+  s13 = PropsSI("SMASS","T",T13,"P",P13,fluid)
+
+  # =========================================================
+  # State 1: Mixing tee outlet / Compressor 1 inlet
+  # =========================================================
+  (1.0 - f)*h11 + f*h13 = h1
+  P1 = P_suction
+  T1 = PropsSI("T","P",P1,"HMASS",h1,fluid)
+  s1 = PropsSI("SMASS","P",P1,"HMASS",h1,fluid)
+  rho1 = PropsSI("D","P",P1,"HMASS",h1,fluid)
+  v1 = 1.0/rho1
+
+  # =========================================================
+  # Mass flow rate through compressors (from compressor 1 suction volume)
+  # =========================================================
+  m_dot = V_dot_disp_1*eta_vol_1/v1
+
+  # =========================================================
+  # State 3: Intercooler 1 exit / Compressor 2 inlet
+  # Given T3 and suction v3 set by compressor 2 displacement
+  # =========================================================
+  T3 = T_amb + DT_ic_1
+  v3 = V_dot_disp_2*eta_vol_2/m_dot
+  rho3 = 1.0/v3
+  P3 = PropsSI("P","T",T3,"D",rho3,fluid)
+  s3 = PropsSI("SMASS","T",T3,"P",P3,fluid)
+  h3 = PropsSI("HMASS","T",T3,"P",P3,fluid)
+
+  # =========================================================
+  # State 2: Compressor 1 exit / Intercooler 1 inlet
+  # Isentropic efficiency model
+  # =========================================================
+  P2 = P3
+  s_s2 = s1
+  h_s2 = PropsSI("HMASS","P",P2,"SMASS",s_s2,fluid)
+  h2 = h1 + (h_s2 - h1)/eta_c_1
+  T2 = PropsSI("T","P",P2,"HMASS",h2,fluid)
+  s2 = PropsSI("SMASS","P",P2,"HMASS",h2,fluid)
+  W_dot_c_1 = m_dot*(h2 - h1)
+
+  # =========================================================
+  # State 5: Intercooler 2 exit / Compressor 3 inlet
+  # Given T5 and suction v5 set by compressor 3 displacement
+  # =========================================================
+  T5 = T_amb + DT_ic_2
+  v5 = V_dot_disp_3*eta_vol_3/m_dot
+  rho5 = 1.0/v5
+  P5 = PropsSI("P","T",T5,"D",rho5,fluid)
+  s5 = PropsSI("SMASS","T",T5,"P",P5,fluid)
+  h5 = PropsSI("HMASS","T",T5,"P",P5,fluid)
+
+  # =========================================================
+  # State 4: Compressor 2 exit / Intercooler 2 inlet
+  # =========================================================
+  P4 = P5
+  s_s4 = s3
+  h_s4 = PropsSI("HMASS","P",P4,"SMASS",s_s4,fluid)
+  h4 = h3 + (h_s4 - h3)/eta_c_2
+  T4 = PropsSI("T","P",P4,"HMASS",h4,fluid)
+  s4 = PropsSI("SMASS","P",P4,"HMASS",h4,fluid)
+  W_dot_c_2 = m_dot*(h4 - h3)
+
+  # =========================================================
+  # State 6: Compressor 3 exit / Aftercooler inlet
+  # =========================================================
+  P6 = P_discharge
+  s_s6 = s5
+  h_s6 = PropsSI("HMASS","P",P6,"SMASS",s_s6,fluid)
+  h6 = h5 + (h_s6 - h5)/eta_c_3
+  T6 = PropsSI("T","P",P6,"HMASS",h6,fluid)
+  s6 = PropsSI("SMASS","P",P6,"HMASS",h6,fluid)
+  W_dot_c_3 = m_dot*(h6 - h5)
+
+  # =========================================================
+  # Liquefaction performance
+  # =========================================================
+  m_dot_f = f*m_dot
+  V_dot_f = m_dot_f*v12
+  V_dot_f_literphr = V_dot_f*m3s_to_liter_per_hr
+
+  W_dot_c_total = W_dot_c_1 + W_dot_c_2 + W_dot_c_3
+  W_dot_c_per_m_dot_f = W_dot_c_total/m_dot_f
+  W_dot_c_per_m_dot_f_kJpkg = W_dot_c_per_m_dot_f*J_per_kg_to_kJ_per_kg
+
+guesses:
+  # fraction liquefied
+  ? f = 0.10
+
+  # key enthalpies (J/kg) — keep moderate to avoid thermo penalties
+  ? h8 = 250000.0
+  ? h9 = 250000.0
+  ? h1 = 400000.0
+  ? h2 = 600000.0
+  ? h3 = 500000.0
+  ? h4 = 650000.0
+  ? h5 = 520000.0
+  ? h6 = 700000.0
+  ? h7 = 600000.0
+  ? h10 = 200000.0
+  ? h11 = 500000.0
+  ? h12 = 100000.0
+  ? h13 = 400000.0
+
+  # temperatures (K)
+  ? T8 = 180.0
+  ? T9 = 120.0
+  ? T10 = 90.0
+  ? T12 = 90.0
+  ? T1 = 295.0
+  ? T2 = 340.0
+  ? T4 = 340.0
+  ? T6 = 340.0
+
+  # pressures (Pa)
+  ? P3 = 3000000.0
+  ? P5 = 8000000.0
+
+  # entropies (J/kg-K)
+  ? s1 = 4000.0
+  ? s3 = 4000.0
+  ? s5 = 4000.0
+
+  # volumes/densities
+  ? v1 = 0.20
+  ? rho1 = 5.0
+  ? v12 = 0.001
+  ? rho12 = 1000.0
+  ? v3 = 0.05
+  ? rho3 = 20.0
+  ? v5 = 0.02
+  ? rho5 = 50.0
+
+  # flow + powers
+  ? m_dot = 0.03
+  ? m_dot_f = 0.003
+  ? W_dot_c_1 = 5000.0
+  ? W_dot_c_2 = 5000.0
+  ? W_dot_c_3 = 5000.0
+  ? W_dot_c_total = 15000.0
+
+report:
+  # inputs
+  fluid
+  P_suction, P_discharge
+  V_dot_disp_1, eta_vol_1, eta_c_1
+  V_dot_disp_2, eta_vol_2, eta_c_2
+  V_dot_disp_3, eta_vol_3, eta_c_3
+  T_amb, DT_ac, DT_ic_1, DT_ic_2, DT_rec
+
+  # key solved fraction
+  f
+
+  # state 7, 8, 9, 10, 11, 12
+  T7, P7, h7, s7
+  T8, P8, h8, s8
+  T9, P9, h9, s9, x9
+  T10, P10, h10, s10
+  T11, P11, h11, s11
+  T12, P12, h12, s12, v12
+
+  # compressor states
+  T1, P1, h1, s1, v1
+  T2, P2, h2, s2
+  T3, P3, h3, s3, v3
+  T4, P4, h4, s4
+  T5, P5, h5, s5, v5
+  T6, P6, h6, s6
+
+  # performance
+  m_dot
+  m_dot_f
+  V_dot_f_literphr
+  W_dot_c_total
+  W_dot_c_per_m_dot_f_kJpkg
+
+solve:
+  backend = auto
+  method = hybr
+  tol = 0.0000000001
+  max_iter = 800
+  max_restarts = 2

@@ -1,0 +1,121 @@
+title: Klein & Nellis — Section 8.2.3 — Reheat Rankine Cycle (optimize reheat pressure) — TDPy v2
+
+given:
+  # ---------------- reservoirs ----------------
+  T_H = 800.0                  # K
+  T_C = 325.0                  # K
+
+  # ---------------- boiler pressure (unrolled; NO scientific notation) ----------------
+  P_b = 10000000.0             # Pa  (10 MPa)
+
+  # ---------------- unrolled conversions ----------------
+  Pa_per_MPa = 1000000.0
+
+design_vars:
+  P_rh
+
+bounds:
+  # keep P_rh between condenser-region pressures and boiler pressure
+  P_rh: [20000.0, 9500000.0]
+
+objective:
+  max eta_Rankine
+
+equations:
+  # --- reporting convenience ---
+  P_rh_MPa = P_rh / Pa_per_MPa
+
+  # ---------------- Condenser exit (state 6): saturated liquid at T_C ----------------
+  P6 = PropsSI("P","T",T_C,"Q",0.0,"Water")
+  h6 = PropsSI("HMASS","T",T_C,"Q",0.0,"Water")
+  s6 = PropsSI("SMASS","T",T_C,"Q",0.0,"Water")
+
+  # ---------------- Boiler exit (state 2): (P_b, T_H) ----------------
+  h2 = PropsSI("HMASS","T",T_H,"P",P_b,"Water")
+  s2 = PropsSI("SMASS","T",T_H,"P",P_b,"Water")
+
+  # ---------------- Pump exit (state 1): isentropic from state 6 to P_b ----------------
+  s1 = s6
+  h1 = PropsSI("HMASS","P",P_b,"SMASS",s1,"Water")
+  T1 = PropsSI("T","P",P_b,"SMASS",s1,"Water")
+
+  # ---------------- HP turbine exit / reheat inlet (state 3): isentropic to P_rh ----------------
+  s3 = s2
+  h3 = PropsSI("HMASS","P",P_rh,"SMASS",s3,"Water")
+  T3 = PropsSI("T","P",P_rh,"SMASS",s3,"Water")
+  x3 = PropsSI("Q","P",P_rh,"HMASS",h3,"Water")
+
+  # ---------------- Reheater exit / LP turbine inlet (state 4): (P_rh, T_H) ----------------
+  h4 = PropsSI("HMASS","T",T_H,"P",P_rh,"Water")
+  s4 = PropsSI("SMASS","T",T_H,"P",P_rh,"Water")
+
+  # ---------------- LP turbine exit (state 5): isentropic to condenser pressure P6 ----------------
+  s5 = s4
+  h5 = PropsSI("HMASS","P",P6,"SMASS",s5,"Water")
+  T5 = PropsSI("T","P",P6,"SMASS",s5,"Water")
+  x5 = PropsSI("Q","P",P6,"HMASS",h5,"Water")
+
+  # ---------------- Cycle performance (per unit mass) ----------------
+  w_net_per_kg = (h2 - h3) + (h4 - h5) - (h1 - h6)
+  q_in_per_kg  = (h2 - h1) + (h4 - h3)
+  eta_Rankine  = w_net_per_kg / q_in_per_kg
+
+guesses:
+  # design var
+  ? P_rh = 750000.0
+  ? P_rh_MPa = 0.75
+
+  # typical water/steam magnitudes (J/kg, J/kg-K, Pa, K)
+  ? P6 = 13000.0
+  ? h6 = 220000.0
+  ? s6 = 700.0
+
+  ? h2 = 3500000.0
+  ? s2 = 6600.0
+
+  ? s1 = 700.0
+  ? h1 = 250000.0
+  ? T1 = 330.0
+
+  ? s3 = 6600.0
+  ? h3 = 3200000.0
+  ? T3 = 520.0
+  ? x3 = 1.0
+
+  ? h4 = 3600000.0
+  ? s4 = 7600.0
+
+  ? s5 = 7600.0
+  ? h5 = 2500000.0
+  ? T5 = 325.0
+  ? x5 = 0.85
+
+  ? w_net_per_kg = 900000.0
+  ? q_in_per_kg = 3000000.0
+  ? eta_Rankine = 0.30
+
+report:
+  T_H, T_C
+  P_b
+
+  P_rh, P_rh_MPa
+
+  # key states
+  P6, h6, s6
+  h1, s1, T1
+  h2, s2
+  h3, s3, T3, x3
+  h4, s4
+  h5, s5, T5, x5
+
+  # performance
+  w_net_per_kg
+  q_in_per_kg
+  eta_Rankine
+
+solve:
+  backend = scipy
+  method = SLSQP
+  tol = 0.0000000001
+  max_iter = 800
+  max_restarts = 2

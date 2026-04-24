@@ -1,0 +1,107 @@
+title: Klein & Nellis — Section 8.2.3 — Reheat Rankine Cycle (fixed reheat pressure) — TDPy
+
+given:
+  # ---------------- reservoirs ----------------
+  T_H = 800.0                  # K
+  T_C = 325.0                  # K
+
+  # ---------------- pressures (unrolled; NO scientific notation) ----------------
+  P_b  = 10000000.0            # Pa  (10 MPa)
+  P_rh = 750000.0              # Pa  (reheat pressure)
+
+  # ---------------- unrolled conversions ----------------
+  Pa_per_MPa = 1000000.0
+  W_to_kW = 0.001
+
+equations:
+  # convenience (MPa values for reporting)
+  P_b_MPa  = P_b / Pa_per_MPa
+  P_rh_MPa = P_rh / Pa_per_MPa
+
+  # ---------------- State 2: Boiler exit / High-pressure turbine inlet ----------------
+  P2 = P_b
+  T2 = T_H
+  h2 = PropsSI("HMASS","T",T2,"P",P2,"Water")
+  s2 = PropsSI("SMASS","T",T2,"P",P2,"Water")
+
+  # ---------------- State 6: Condenser exit / Pump inlet (sat. liquid at T_C) ----------------
+  x6 = 0.0
+  T6 = T_C
+  P6 = PropsSI("P","T",T6,"Q",x6,"Water")
+  h6 = PropsSI("HMASS","T",T6,"Q",x6,"Water")
+  s6 = PropsSI("SMASS","T",T6,"Q",x6,"Water")
+
+  # ---------------- State 1: Pump exit / Boiler inlet (isentropic pump) ----------------
+  s1 = s6
+  P1 = P_b
+  h1 = PropsSI("HMASS","P",P1,"SMASS",s1,"Water")
+  T1 = PropsSI("T","P",P1,"SMASS",s1,"Water")
+
+  # ---------------- State 3: HP turbine exit / Reheater inlet (isentropic to P_rh) ----------------
+  s3 = s2
+  P3 = P_rh
+  h3 = PropsSI("HMASS","P",P3,"SMASS",s3,"Water")
+  T3 = PropsSI("T","P",P3,"SMASS",s3,"Water")
+  x3 = PropsSI("Q","P",P3,"SMASS",s3,"Water")
+
+  # ---------------- State 4: Reheater exit / LP turbine inlet ----------------
+  T4 = T_H
+  P4 = P_rh
+  h4 = PropsSI("HMASS","T",T4,"P",P4,"Water")
+  s4 = PropsSI("SMASS","T",T4,"P",P4,"Water")
+
+  # ---------------- State 5: LP turbine exit / Condenser inlet (isentropic to P6) ----------------
+  P5 = P6
+  s5 = s4
+  h5 = PropsSI("HMASS","P",P5,"SMASS",s5,"Water")
+  T5 = PropsSI("T","P",P5,"SMASS",s5,"Water")
+  x5 = PropsSI("Q","P",P5,"SMASS",s5,"Water")
+
+  # ---------------- Component energy balances (per unit mass) ----------------
+  w_p_per_kg      = h1 - h6
+  q_b_per_kg      = h2 - h1
+  w_HPt_per_kg    = h2 - h3
+  q_rh_per_kg     = h4 - h3
+  w_LPt_per_kg    = h4 - h5
+  q_cond_per_kg   = h5 - h6
+
+  # ---------------- Thermal efficiency ----------------
+  w_net_per_kg = w_HPt_per_kg + w_LPt_per_kg - w_p_per_kg
+  q_in_per_kg  = q_b_per_kg + q_rh_per_kg
+  eta_Rankine  = w_net_per_kg / q_in_per_kg
+
+  # ---------------- Helpful checks ----------------
+  check_1 = w_HPt_per_kg + w_LPt_per_kg + q_cond_per_kg - w_p_per_kg - q_b_per_kg - q_rh_per_kg
+
+report:
+  # inputs
+  T_H, T_C
+  P_b, P_b_MPa
+  P_rh, P_rh_MPa
+
+  # states
+  T1, P1, h1, s1
+  T2, P2, h2, s2
+  T3, P3, h3, s3, x3
+  T4, P4, h4, s4
+  T5, P5, h5, s5, x5
+  T6, P6, h6, s6
+
+  # per-mass results
+  w_p_per_kg
+  w_HPt_per_kg
+  w_LPt_per_kg
+  w_net_per_kg
+  q_b_per_kg
+  q_rh_per_kg
+  q_in_per_kg
+  q_cond_per_kg
+  eta_Rankine
+  check_1
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 0.0000000001
+  max_iter = 200
+  max_restarts = 1

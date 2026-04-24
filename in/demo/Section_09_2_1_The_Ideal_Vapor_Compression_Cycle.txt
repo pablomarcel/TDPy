@@ -1,0 +1,164 @@
+title: Klein & Nellis — Section 9.2.1 — Ideal Vapor Compression Cycle (Ammonia) — TDPy
+
+given:
+  # --- refrigerant ---
+  fluid = Ammonia
+
+  # --- reservoirs ---
+  T_H = 320.0                        # K
+  T_C = 260.0                        # K
+
+  # --- compressor + displacement ---
+  eta_vol = 0.8                      # volumetric efficiency
+  V_dot_disp_cfm = 42.9              # cfm (fixed displacement compressor)
+
+  # --- unrolled conversions ---
+  ton_W = 3516.852842                # W per refrigeration ton
+  W_to_Btuph = 3.412141633           # (Btu/hr) per W
+  m3s_to_cfm = 2118.880003289315482          # cfm per (m^3/s)
+
+equations:
+  # ---------------- Compressor displacement (m^3/s) ----------------
+  V_dot_disp_cfm = V_dot_disp * m3s_to_cfm
+
+  # ---------------- State 4: Condenser exit / Throttle inlet (sat. liquid at T_H) ----------------
+  T4 = T_H
+  x4 = 0.0
+  P4 = PropsSI("P","T",T4,"Q",x4,fluid)
+  s4 = PropsSI("SMASS","T",T4,"Q",x4,fluid)
+  h4 = PropsSI("HMASS","T",T4,"Q",x4,fluid)
+
+  # ---------------- State 2: Evaporator exit / Compressor inlet (sat. vapor at T_C) ----------------
+  T2 = T_C
+  x2 = 1.0
+  P2 = PropsSI("P","T",T2,"Q",x2,fluid)
+  s2 = PropsSI("SMASS","T",T2,"Q",x2,fluid)
+  h2 = PropsSI("HMASS","T",T2,"Q",x2,fluid)
+  rho2 = PropsSI("D","T",T2,"Q",x2,fluid)
+  v2 = 1.0 / rho2
+
+  # ---------------- State 3: Compressor exit / Condenser inlet (isentropic to P4) ----------------
+  s3 = s2
+  P3 = P4
+  h3 = PropsSI("HMASS","P",P3,"SMASS",s3,fluid)
+  T3 = PropsSI("T","P",P3,"SMASS",s3,fluid)
+
+  # ---------------- State 1: Throttle exit / Evaporator inlet (h constant, to P2) ----------------
+  h1 = h4
+  P1 = P2
+  s1 = PropsSI("SMASS","P",P1,"HMASS",h1,fluid)
+  T1 = PropsSI("T","P",P1,"HMASS",h1,fluid)
+
+  # ---------------- Energy balances (per unit mass) ----------------
+  q_cond_per_kg = h3 - h4
+  q_evap_per_kg = h2 - h1
+  w_c_per_kg = h3 - h2
+
+  # ---------------- Capacity + mass flow (Q_dot_evap_ton is solved) ----------------
+  Q_dot_evap = Q_dot_evap_ton * ton_W
+  m_dot = eta_vol * V_dot_disp / v2
+  Q_dot_evap = q_evap_per_kg * m_dot
+
+  Q_dot_cond = q_cond_per_kg * m_dot
+  W_dot_c = w_c_per_kg * m_dot
+
+  # ---------------- COP + EER ----------------
+  COP = Q_dot_evap / W_dot_c
+  EER = COP * W_to_Btuph
+
+  # ---------------- Entropy balances ----------------
+  S_dot_gen_v = m_dot * (s1 - s4)
+
+  S_dot_gen_cond = (Q_dot_cond / T_H) + m_dot * (s4 - s3)
+
+  S_dot_gen_evap = m_dot * (s2 - s1) - (Q_dot_evap / T_C)
+
+  S_dot_gen_c = m_dot * (s3 - s2)
+
+  S_dot_gen = S_dot_gen_v + S_dot_gen_cond + S_dot_gen_evap + S_dot_gen_c
+
+  # ---------------- Reversible reference + lost work checks ----------------
+  COP_Carnot = T_C / (T_H - T_C)
+  W_dot_rev = Q_dot_evap / COP_Carnot
+  W_dot_lost = W_dot_c - W_dot_rev
+  W_dot_lost_2 = S_dot_gen * T_H
+
+  # ---------------- convenient outputs ----------------
+  Q_dot_evap_kW = Q_dot_evap / 1000.0
+  Q_dot_cond_kW = Q_dot_cond / 1000.0
+  W_dot_c_kW = W_dot_c / 1000.0
+
+guesses:
+  # key solved input (EES used it as an initial guess)
+  ? Q_dot_evap_ton = 10.0
+
+  # pressures (Pa)
+  ? P2 = 300000.0
+  ? P4 = 1500000.0
+  ? P1 = 300000.0
+  ? P3 = 1500000.0
+
+  # temperatures (K)
+  ? T1 = 260.0
+  ? T2 = 260.0
+  ? T3 = 340.0
+  ? T4 = 320.0
+
+  # properties (J/kg, J/kg-K)
+  ? h1 = 200000.0
+  ? h2 = 1400000.0
+  ? h3 = 1600000.0
+  ? h4 = 200000.0
+  ? s1 = 1200.0
+  ? s2 = 5400.0
+  ? s3 = 5400.0
+  ? s4 = 1100.0
+  ? v2 = 0.6
+  ? rho2 = 2.0
+
+  # performance magnitudes
+  ? V_dot_disp = 0.020
+  ? m_dot = 0.02
+  ? Q_dot_evap = 35000.0
+  ? Q_dot_cond = 45000.0
+  ? W_dot_c = 12000.0
+  ? COP = 3.0
+  ? EER = 10.0
+  ? S_dot_gen = 0.5
+  ? W_dot_lost = 1000.0
+
+report:
+  # inputs
+  fluid
+  T_H, T_C
+  eta_vol
+  V_dot_disp_cfm, V_dot_disp
+
+  # states
+  T1, P1, h1, s1
+  T2, P2, h2, s2, v2
+  T3, P3, h3, s3
+  T4, P4, h4, s4
+
+  # per-mass energy quantities
+  q_evap_per_kg, q_cond_per_kg, w_c_per_kg
+
+  # capacity + power
+  Q_dot_evap_ton
+  m_dot
+  Q_dot_evap_kW, Q_dot_cond_kW, W_dot_c_kW
+
+  # COP / EER
+  COP, EER, COP_Carnot
+
+  # entropy + lost work
+  S_dot_gen_v, S_dot_gen_cond, S_dot_gen_evap, S_dot_gen_c
+  S_dot_gen
+  W_dot_rev, W_dot_lost, W_dot_lost_2
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 0.0000000001
+  max_iter = 600
+  max_restarts = 2

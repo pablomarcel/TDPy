@@ -1,0 +1,42 @@
+title: Optimization Smoke Test — maximize product with linear constraint (algebra only)
+
+given:
+  # Goal:
+  #   maximize f = x*y
+  # subject to:
+  #   x + y = 1
+  #   0 <= x <= 1
+  #   0 <= y <= 1
+  #
+  # Known optimum: x = 0.5, y = 0.5, f = 0.25
+
+# --- Optimizer intent (block-style, robust) ---
+design_vars:
+  x, y
+
+bounds:
+  x: [0, 1]
+  y: [0, 1]
+
+objective:
+  # parse.py will re-prefix this as: "objective: max x*y"
+  # build_spec.py recognizes "objective: max ..." and sets sense="max".
+  max x*y
+
+equations:
+  # Constraints (residual == 0)
+  x + y = 1
+
+guesses:
+  # Provide a feasible initial guess (satisfies x+y=1)
+  ? x = 0.2
+  ? y = 0.8
+
+report:
+  x, y
+
+solve:
+  backend = scipy
+  method = SLSQP
+  tol = 1e-10
+  max_iter = 200

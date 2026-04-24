@@ -1,0 +1,118 @@
+title: Klein & Nellis §12.3.2 — Psychrometric Chart Point (T=25°C, φ=0.40, P=1 atm) — dew point + wet bulb (robust HAPropsSI) — TDPy
+
+given:
+  # --- inputs ---
+  T = 25.0 + 273.15                 # K
+  P = 101325.0                      # Pa (1 atm)
+  phi = 0.40                        # -  (relative humidity)
+
+  # --- constants ---
+  R_u = 8314.462618                 # J/(kmol*K)
+  MW_air = 28.96546                 # kg/kmol (dry air)
+  R_a = R_u/MW_air                  # J/(kg*K)
+  eps = 0.622                       # Mw_v/Mw_a (humidity-ratio constant)
+
+  # --- convenience ---
+  T_C = T - 273.15                  # C
+
+equations:
+  # ================= Saturation + humidity ratio (by definition) =================
+  P_sat = PropsSI("P","T",T,"Q",0,"Water")
+  P_v = phi*P_sat
+  omega = eps*P_v/(P - P_v)
+
+  # ================= Dew point =================
+  T_dp = PropsSI("T","P",P_v,"Q",0,"Water")
+  T_dp_C = T_dp - 273.15
+
+  # ================= Specific volume per kg dry air (ideal-gas form, for reporting) =================
+  P_a = P - P_v
+  v_av_ideal = R_a*T/P_a
+
+  # ================= CoolProp humid-air reference (more reliable for enthalpy/volume) =================
+  omega_HA = HAPropsSI("W","T",T,"P",P,"R",phi)
+  h_av_HA  = HAPropsSI("H","T",T,"P",P,"R",phi)
+  v_av_HA  = HAPropsSI("V","T",T,"P",P,"R",phi)
+
+  # ================= Wet-bulb by adiabatic-saturation energy balance =================
+  # unknown is T_wb (K)
+  T_wb_C = T_wb - 273.15
+
+  # saturated state at T_wb, P
+  omega_as = HAPropsSI("W","T",T_wb,"P",P,"R",1.0)
+  h_av_as  = HAPropsSI("H","T",T_wb,"P",P,"R",1.0)
+
+  # makeup-water enthalpy (liquid water at (T_wb, P))
+  h_muw = PropsSI("HMASS","T",T_wb,"P",P,"Water")
+
+  # Klein & Nellis energy balance (same structure as §12.3.2, written in HAProps form):
+  # h_in + (ω_as - ω_in)*h_muw = h_sat(T_wb)
+  h_av_HA + (omega_as - omega_HA)*h_muw = h_av_as
+
+  # ================= comparisons / diffs =================
+  d_omega = omega - omega_HA
+  d_v_av  = v_av_ideal - v_av_HA
+
+guesses:
+  # primary unknown (must be a numeric literal; TDPy guesses don't parse expressions)
+  ? T_wb = 293.15
+
+  # saturation / humidity
+  ? P_sat = 3169.0
+  ? P_v = 1267.0
+  ? omega = 0.008
+
+  # dew point
+  ? T_dp = 285.0
+  ? T_dp_C = 12.0
+
+  # dry air partial pressure + v
+  ? P_a = 100000.0
+  ? v_av_ideal = 0.85
+
+  # humid-air references (warm-start will overwrite)
+  ? omega_HA = 0.008
+  ? h_av_HA = 50000.0
+  ? v_av_HA = 0.85
+
+  # saturated at wet-bulb
+  ? omega_as = 0.015
+  ? h_av_as = 60000.0
+  ? h_muw = 80000.0
+
+  # diffs
+  ? d_omega = 0.0
+  ? d_v_av = 0.0
+
+report:
+  # inputs
+  T, T_C, P, phi
+
+  # saturation / humidity ratio
+  P_sat, P_v
+  omega
+  omega_HA
+  d_omega
+
+  # dew point
+  T_dp, T_dp_C
+
+  # specific volume
+  P_a
+  v_av_ideal
+  v_av_HA
+  d_v_av
+
+  # wet-bulb
+  T_wb, T_wb_C
+  omega_as
+  h_av_HA
+  h_av_as
+  h_muw
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 400
+  max_restarts = 2

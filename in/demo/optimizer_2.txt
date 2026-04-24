@@ -1,0 +1,27 @@
+title: Optimization Smoke Test — minimize quadratic (algebra only)
+
+given:
+  # No thermo here — just a clean optimizer routing test.
+  # Known optimum with constraint x+y=1 is (x,y)=(0.2,0.8)
+
+equations:
+  # --- Optimizer directives (these are NOT equations) ---
+  design_vars: x, y
+  bounds: x: [0, 1]; y: [0, 1]
+  minimize: (x - 0.2)^2 + (y - 0.8)^2
+
+  # --- Constraints (these ARE equations; optimizer treats them as residual==0) ---
+  x + y = 1
+
+guesses:
+  ? x = 0.5
+  ? y = 0.5
+
+report:
+  x, y
+
+solve:
+  backend = scipy
+  method = SLSQP
+  tol = 1e-10
+  max_iter = 200

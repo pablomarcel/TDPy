@@ -1,0 +1,64 @@
+title: Klein & Nellis — Section 8.6.1 — Heat Transfer Limited Carnot Cycle — TDPy (force equations)
+
+given:
+  # reservoir temperatures
+  T_H = 1000.0        # K
+  T_C = 300.0         # K
+
+  # heat exchanger conductances
+  UA_C = 100.0        # W/K
+  UA_H = 100.0        # W/K
+
+  # efficiency target (keep as constant, solve eta via an equation so system isn't fully constant-folded)
+  eta_target = 0.5
+
+  # unrolled conversions
+  W_to_kW = 0.001
+
+equations:
+  # --- force at least one true unknown so the interpreter keeps the rest as equations ---
+  eta = eta_target
+
+  # ---------------- power output ----------------
+  W_dot = UA_C * eta * UA_H * (-T_H + T_C + eta * T_H) / (UA_H * eta - UA_C - UA_H + UA_C * eta)
+  W_dot_kW = W_dot * W_to_kW
+
+  # Carnot (reversible) efficiency upper bound
+  eta_max = 1.0 - T_C / T_H
+
+  # ---------------- working-fluid end temperatures ----------------
+  T_c_e = -(-W_dot * eta + UA_H * T_H * eta * eta + W_dot - UA_H * T_H * eta) / UA_H / eta
+  T_h_e = (-W_dot + UA_H * T_H * eta) / UA_H / eta
+
+  # ---------------- heat transfer rates ----------------
+  Q_dot_C = -W_dot * (eta - 1.0) / eta
+  Q_dot_C_kW = Q_dot_C * W_to_kW
+
+  Q_dot_H = W_dot / eta
+  Q_dot_H_kW = Q_dot_H * W_to_kW
+
+guesses:
+  ? eta = 0.5
+  ? W_dot = 10000.0
+  ? Q_dot_H = 20000.0
+  ? Q_dot_C = 10000.0
+  ? T_c_e = 400.0
+  ? T_h_e = 800.0
+
+report:
+  T_H, T_C
+  UA_C, UA_H
+  eta, eta_target
+  eta_max
+
+  W_dot, W_dot_kW
+  T_c_e, T_h_e
+  Q_dot_C, Q_dot_C_kW
+  Q_dot_H, Q_dot_H_kW
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 0.0000000001
+  max_iter = 50
+  max_restarts = 1

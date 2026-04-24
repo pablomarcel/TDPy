@@ -1,0 +1,114 @@
+title: Klein & Nellis — Section 8.2.2 — Non-Ideal Rankine Cycle (Water) — TDPy
+
+given:
+  # ---------------- reservoirs ----------------
+  T_H = 800.0                 # K
+  T_C = 325.0                 # K
+
+  # ---------------- boiler pressure ----------------
+  P_b = 2640000.0             # Pa (2.64 MPa)
+
+  # ---------------- performance parameters ----------------
+  eta_t = 0.85                # turbine efficiency
+  eta_p = 0.65                # pump efficiency
+  DT_cond = 7.0               # K condenser approach
+  DT_b = 35.0                 # K boiler approach
+  DP_cond = 4500.0            # Pa (4.5 kPa)
+  DP_b = 792000.0             # Pa (792 kPa)
+
+  # ---------------- unrolled conversions ----------------
+  Btu_per_kWhr = 3412.141633
+
+equations:
+  # ---------------- State 2: Boiler exit / Turbine inlet ----------------
+  P2 = P_b - DP_b
+  T2 = T_H - DT_b
+  h2 = PropsSI("HMASS","T",T2,"P",P2,"Water")
+  s2 = PropsSI("SMASS","T",T2,"P",P2,"Water")
+
+  # ---------------- State 4: Condenser exit / Pump inlet (sat. liquid at T_C + DT_cond) ----------------
+  x4 = 0.0
+  T4 = T_C + DT_cond
+  P4 = PropsSI("P","T",T4,"Q",x4,"Water")
+  h4 = PropsSI("HMASS","T",T4,"Q",x4,"Water")
+  s4 = PropsSI("SMASS","T",T4,"Q",x4,"Water")
+  rho4 = PropsSI("D","T",T4,"Q",x4,"Water")
+  v4 = 1.0 / rho4
+
+  # ---------------- State 1: Pump exit / Boiler inlet ----------------
+  P1 = P_b
+  s_s1 = s4
+  h_s1 = PropsSI("HMASS","P",P1,"SMASS",s_s1,"Water")
+  w_s_p_per_kg = h_s1 - h4
+  w_p_per_kg = w_s_p_per_kg / eta_p
+  h1 = h4 + w_p_per_kg
+  s1 = PropsSI("SMASS","P",P1,"HMASS",h1,"Water")
+  T1 = PropsSI("T","P",P1,"HMASS",h1,"Water")
+
+  # pump work per kg using incompressible model
+  w_p_IC_per_kg = v4 * (P1 - P4) / eta_p
+
+  # ---------------- State 3: Turbine exit / Condenser inlet ----------------
+  P3 = P4 + DP_cond
+  s_s3 = s2
+  h_s3 = PropsSI("HMASS","P",P3,"SMASS",s_s3,"Water")
+  w_s_t_per_kg = h2 - h_s3
+  w_t_per_kg = w_s_t_per_kg * eta_t
+  h3 = h2 - w_t_per_kg
+  s3 = PropsSI("SMASS","P",P3,"HMASS",h3,"Water")
+  T3 = PropsSI("T","P",P3,"HMASS",h3,"Water")
+  x3 = PropsSI("Q","P",P3,"HMASS",h3,"Water")
+
+  # ---------------- Component energy balances (per unit mass) ----------------
+  q_b_per_kg = h2 - h1
+  q_cond_per_kg = h3 - h4
+
+  check_1 = w_t_per_kg + q_cond_per_kg - w_p_per_kg - q_b_per_kg
+
+  w_net_per_kg = w_t_per_kg - w_p_per_kg
+  eta_Rankine = w_net_per_kg / q_b_per_kg
+  bwr = w_p_per_kg / w_t_per_kg
+
+  heat_rate_BtupkWhr = (q_b_per_kg / w_net_per_kg) * Btu_per_kWhr
+
+report:
+  # inputs
+  T_H, T_C
+  P_b
+  eta_t, eta_p
+  DT_cond, DT_b
+  DP_cond, DP_b
+
+  # states
+  T1, P1, h1, s1
+  T2, P2, h2, s2
+  T3, P3, h3, s3, x3
+  T4, P4, h4, s4, v4
+
+  # pump comparisons
+  w_s_p_per_kg
+  w_p_per_kg
+  w_p_IC_per_kg
+
+  # turbine work
+  h_s3
+  w_s_t_per_kg
+  w_t_per_kg
+
+  # heat rates per kg
+  q_b_per_kg
+  q_cond_per_kg
+
+  # checks + performance
+  check_1
+  w_net_per_kg
+  eta_Rankine
+  bwr
+  heat_rate_BtupkWhr
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 0.0000000001
+  max_iter = 200
+  max_restarts = 1

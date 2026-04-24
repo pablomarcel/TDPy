@@ -1,0 +1,256 @@
+title: Klein & Nellis — Section 8.5.2 — Simple Model of Ideal Stirling Engine Cycle (He) — TDPy
+
+given:
+  # ---------------- unrolled primitives ----------------
+  # reservoir temperatures (C -> K unrolled)
+  T_H = 923.15                 # K  (650 C)
+  T_C = 293.15                 # K  (20 C)
+
+  # working fluid
+  fluid = "Helium"
+
+  # compression ratio
+  CR = 5.0
+
+  # charge pressure (MPa -> Pa unrolled)
+  P_charge = 1000000.0         # Pa (1 MPa)
+
+  # maximum volume (100 cm^3 -> m^3 unrolled; 1 cm^3 = 0.000001 m^3)
+  Vol_max = 0.0001             # m^3
+  Vol_min = 0.00002            # m^3  (Vol_max / CR)
+
+  # nondimensional piston position for blow-process mass split
+  nd = 0.5
+
+  # unrolled conversions
+  Pa_per_MPa = 1000000.0
+
+equations:
+  # =========================
+  # State 1 (cold, max volume)
+  # =========================
+  P1 = P_charge
+  T1 = T_C
+  Vol1 = Vol_max
+
+  rho1 = PropsSI("D","T",T1,"P",P1,fluid)
+  v1 = 1.0 / rho1
+  u1 = PropsSI("UMASS","T",T1,"P",P1,fluid)
+  s1 = PropsSI("SMASS","T",T1,"P",P1,fluid)
+
+  m = Vol1 / v1
+
+  # =========================
+  # State 2 (cold, min volume)
+  # =========================
+  T2 = T_C
+  Vol2 = Vol_min
+
+  v2 = Vol2 / m
+  rho2 = 1.0 / v2
+
+  P2 = PropsSI("P","T",T2,"D",rho2,fluid)
+  s2 = PropsSI("SMASS","T",T2,"D",rho2,fluid)
+  u2 = PropsSI("UMASS","T",T2,"D",rho2,fluid)
+
+  # entropy and energy balances for cold isothermal compression
+  0.0 = Q_C_comp / T_C + m * (s2 - s1)
+  W_C_comp = Q_C_comp + m * (u2 - u1)
+
+  # =========================
+  # State 3 (hot, min volume)
+  # =========================
+  T3 = T_H
+  Vol3 = Vol_min
+
+  v3 = Vol3 / m
+  rho3 = 1.0 / v3
+
+  P3 = PropsSI("P","T",T3,"D",rho3,fluid)
+  s3 = PropsSI("SMASS","T",T3,"D",rho3,fluid)
+  u3 = PropsSI("UMASS","T",T3,"D",rho3,fluid)
+
+  # =========================
+  # State 4 (hot, max volume)
+  # =========================
+  T4 = T_H
+  Vol4 = Vol_max
+
+  v4 = Vol4 / m
+  rho4 = 1.0 / v4
+
+  P4 = PropsSI("P","T",T4,"D",rho4,fluid)
+  s4 = PropsSI("SMASS","T",T4,"D",rho4,fluid)
+  u4 = PropsSI("UMASS","T",T4,"D",rho4,fluid)
+
+  # entropy and energy balances for hot isothermal expansion
+  Q_H_exp / T_H = m * (s4 - s3)
+  Q_H_exp = W_H_exp + m * (u4 - u3)
+
+  # =========================
+  # cold-to-hot blow process (CTHB) @ nd = 0.5
+  # =========================
+  h_C = PropsSI("HMASS","T",T_C,"P",P_charge,fluid)
+  h_H = PropsSI("HMASS","T",T_H,"P",P_charge,fluid)
+
+  Q_r_CTHB = m * (h_H - h_C)
+
+  Vol_C_CTHB = Vol_min * (1.0 - nd)
+  Vol_H_CTHB = Vol_min * nd
+
+  P_CTHB_MPa = P_CTHB / Pa_per_MPa
+
+  rho_C_CTHB = PropsSI("D","T",T_C,"P",P_CTHB,fluid)
+  rho_H_CTHB = PropsSI("D","T",T_H,"P",P_CTHB,fluid)
+
+  v_C_CTHB = 1.0 / rho_C_CTHB
+  v_H_CTHB = 1.0 / rho_H_CTHB
+
+  m_C_CTHB = Vol_C_CTHB / v_C_CTHB
+  m_H_CTHB = Vol_H_CTHB / v_H_CTHB
+
+  m_C_CTHB + m_H_CTHB = m
+
+  # Integral(P_CTHB*Vol_min, nd, 0, 1) unrolled (integrand constant)
+  W_C_CTHB = P_CTHB * Vol_min
+  W_H_CTHB = W_C_CTHB
+
+  W_C_CTHB = m * h_C + Q_C_CTHB - m * u2
+  Q_H_CTHB + m * h_H = W_H_CTHB + m * u3
+
+  # =========================
+  # hot-to-cold blow process (HTCB) @ nd = 0.5
+  # =========================
+  Q_r_HTCB = m * (h_H - h_C)
+
+  Vol_C_HTCB = Vol_max * nd
+  Vol_H_HTCB = Vol_max * (1.0 - nd)
+
+  P_HTCB_MPa = P_HTCB / Pa_per_MPa
+
+  rho_C_HTCB = PropsSI("D","T",T_C,"P",P_HTCB,fluid)
+  rho_H_HTCB = PropsSI("D","T",T_H,"P",P_HTCB,fluid)
+
+  v_C_HTCB = 1.0 / rho_C_HTCB
+  v_H_HTCB = 1.0 / rho_H_HTCB
+
+  m_C_HTCB = Vol_C_HTCB / v_C_HTCB
+  m_H_HTCB = Vol_H_HTCB / v_H_HTCB
+
+  m_C_HTCB + m_H_HTCB = m
+
+  # -Integral(P_HTCB*Vol_max, nd, 0, 1) unrolled
+  W_C_HTCB = -P_HTCB * Vol_max
+  W_H_HTCB = W_C_HTCB
+
+  W_C_HTCB + m * h_C = Q_C_HTCB + m * u1
+  Q_H_HTCB = W_H_HTCB + m * h_H - m * u4
+
+  # =========================
+  # Net cycle performance
+  # =========================
+  W_net = W_H_exp - W_C_comp
+
+  Q_H_net = Q_H_exp + Q_H_CTHB + Q_H_HTCB
+
+  eta = W_net / Q_H_net
+  eta_max = 1.0 - T_C / T_H
+
+  # convenient outputs
+  P2_MPa = P2 / Pa_per_MPa
+  P3_MPa = P3 / Pa_per_MPa
+  P4_MPa = P4 / Pa_per_MPa
+
+guesses:
+  # state pressures (Pa)
+  ? P2 = 5000000.0
+  ? P3 = 16000000.0
+  ? P4 = 3200000.0
+
+  # mass and specific volumes
+  ? m = 0.00016
+  ? v1 = 0.60
+  ? v2 = 0.12
+  ? v3 = 0.12
+  ? v4 = 0.60
+
+  # internal energies (J/kg) and entropies (J/kg-K)
+  ? u1 = 900000.0
+  ? u2 = 900000.0
+  ? u3 = 2800000.0
+  ? u4 = 2800000.0
+  ? s1 = 12000.0
+  ? s2 = 10000.0
+  ? s3 = 16000.0
+  ? s4 = 18000.0
+
+  # heats/works (J per cycle)
+  ? Q_C_comp = -200.0
+  ? W_C_comp = 100.0
+  ? Q_H_exp = 900.0
+  ? W_H_exp = 700.0
+
+  # blow pressures (Pa)
+  ? P_CTHB = 5000000.0
+  ? P_HTCB = 3200000.0
+
+  # blow heats (J per cycle)
+  ? Q_C_CTHB = -50.0
+  ? Q_H_CTHB = 50.0
+  ? Q_C_HTCB = -50.0
+  ? Q_H_HTCB = 50.0
+
+  # overall
+  ? W_net = 600.0
+  ? Q_H_net = 1000.0
+  ? eta = 0.60
+
+report:
+  # inputs
+  T_H, T_C
+  CR
+  P_charge
+  Vol_max, Vol_min
+  nd
+
+  # mass
+  m
+
+  # states
+  T1, P1, v1, u1, s1
+  T2, P2, P2_MPa, v2, u2, s2
+  T3, P3, P3_MPa, v3, u3, s3
+  T4, P4, P4_MPa, v4, u4, s4
+
+  # compression / expansion
+  Q_C_comp
+  W_C_comp
+  Q_H_exp
+  W_H_exp
+
+  # regenerator enthalpies
+  h_C
+  h_H
+  Q_r_CTHB
+  Q_r_HTCB
+
+  # blow process pressures and heats
+  P_CTHB, P_CTHB_MPa
+  P_HTCB, P_HTCB_MPa
+  Q_C_CTHB
+  Q_H_CTHB
+  Q_C_HTCB
+  Q_H_HTCB
+
+  # net
+  W_net
+  Q_H_net
+  eta
+  eta_max
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 0.0000000001
+  max_iter = 900
+  max_restarts = 2
