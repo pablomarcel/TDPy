@@ -1,0 +1,246 @@
+title: Klein & Nellis Example 14.6-2 (Acetylene Adiabatic Combustion) — Chemical Equilibrium (Lagrange multipliers), CTPropsSI — v3 (stabilized)
+
+given:
+  # ----------------------------
+  # Inputs (SI, molar)
+  # ----------------------------
+  T_in  = 298.15        # K   (25 C)
+  P     = 101325.0      # Pa  (1 atm)
+  ta    = 1.1           # [-] theoretical air ratio (excess air)
+
+  # Reference pressure for standard-state chemical potentials
+  P_ref = 101325.0      # Pa
+
+  # Universal gas constant (J/(kmol*K))
+  R_u   = 8314.462618
+
+  # Small epsilon to keep ln() arguments strictly positive
+  eps_a = 1e-30
+
+  # ----------------------------
+  # Air / stoichiometry for C2H2 complete combustion
+  #   C2H2 + 2.5 O2 -> 2 CO2 + 1 H2O
+  # Air: 0.21 O2 + 0.79 N2 per "air mole"
+  # ----------------------------
+  a_s   = 2.5 / 0.21              # stoichiometric air moles per mole fuel
+  a     = ta * a_s                # actual air moles per mole fuel
+
+  # Reactant moles (per 1 mol fuel basis)
+  n0_C2H2 = 1.0
+  n0_O2   = 0.21 * a
+  n0_N2   = 0.79 * a
+
+  # ----------------------------
+  # Element totals in the reactants (C,H,O,N) per mole fuel
+  # ----------------------------
+  E_C0 = 2.0 * n0_C2H2
+  E_H0 = 2.0 * n0_C2H2
+  E_O0 = 2.0 * n0_O2
+  E_N0 = 2.0 * n0_N2
+
+  # ----------------------------
+  # Numerical stabilization knobs
+  #   We solve with log-variables z_* and use exp(clamp(z, lo, hi)) everywhere
+  #   in any sensitive expression (ln(), CTPropsSI calls, energy balances).
+  # ----------------------------
+  z_lo  = -80.0     # exp(z_lo) ~ 1.8e-35
+  z_hi  =  50.0     # exp(z_hi) ~ 3.0e21
+  zT_lo =  6.0      # exp(6)  ~ 403 K
+  zT_hi =  9.0      # exp(9)  ~ 8103 K
+
+guess:
+  # ----------------------------
+  # Initial guess from complete combustion (good starting point)
+  # Products for ta=1.1:
+  #   CO2 ~ 2, H2O ~ 1, O2 ~ 0.25, N2 ~ 0.79*a, others tiny
+  # T_out guess near book equilibrium (~2500 K)
+  # ----------------------------
+  z_T    = 7.8240460109     # ln(2500)
+
+  z_CO2  = 0.6931471806     # ln(2.0)
+  z_H2O  = 0.0              # ln(1.0)
+  z_O2   = -1.3862943611    # ln(0.25)
+  z_N2   = 2.337874          # ~ ln(10.36)
+
+  # Tiny species start ~ 1e-10 to avoid "exact zeros"
+  z_C2H2 = -23.0258509299   # ln(1e-10)
+  z_C2H4 = -23.0258509299
+  z_CH4  = -23.0258509299
+  z_H2   = -23.0258509299
+  z_CO   = -23.0258509299
+  z_NO   = -23.0258509299
+  z_NO2  = -23.0258509299
+
+  # Dimensionless Lagrange multipliers (scaled by R*T)
+  lam_C  = 5.0
+  lam_H  = 10.0
+  lam_O  = 20.0
+  lam_N  = 10.0
+
+  # The following are "report helpers" only; they are defined by equations.
+  T_out  = 2500.0
+  n_tot  = 13.6
+  H_R    = 0.0
+  H_out  = 0.0
+  Ghat   = -400.0
+  G      = -1e10
+
+  # Optional: report helpers for composition; they are defined by equations.
+  n_C2H2 = 1e-10
+  n_C2H4 = 1e-10
+  n_CH4  = 1e-10
+  n_CO2  = 2.0
+  n_H2O  = 1.0
+  n_O2   = 0.25
+  n_N2   = 10.35
+  n_H2   = 1e-10
+  n_CO   = 1e-10
+  n_NO   = 1e-10
+  n_NO2  = 1e-10
+
+  y_C2H2 = 1e-12
+  y_C2H4 = 1e-12
+  y_CH4  = 1e-12
+  y_CO2  = 0.15
+  y_H2O  = 0.07
+  y_O2   = 0.02
+  y_N2   = 0.76
+  y_H2   = 1e-12
+  y_CO   = 1e-12
+  y_NO   = 1e-12
+  y_NO2  = 1e-12
+
+  phi_C2H2 = -40.0
+  phi_C2H4 = -40.0
+  phi_CH4  = -40.0
+  phi_CO2  = -75.0
+  phi_H2O  = -55.0
+  phi_O2   = -30.0
+  phi_N2   = -25.0
+  phi_H2   = -18.0
+  phi_CO   = -40.0
+  phi_NO   = -35.0
+  phi_NO2  = -50.0
+
+equations:
+  # ----------------------------
+  # Always evaluate T and n_i through exp(clamp(...)) in sensitive equations.
+  # T_out variable is for reporting only.
+  # ----------------------------
+  T_out = exp(clamp(z_T, zT_lo, zT_hi))
+
+  # ----------------------------
+  # Positive mole numbers (report variables only)
+  # ----------------------------
+  n_C2H2 = exp(clamp(z_C2H2, z_lo, z_hi))
+  n_C2H4 = exp(clamp(z_C2H4, z_lo, z_hi))
+  n_CH4  = exp(clamp(z_CH4,  z_lo, z_hi))
+  n_CO2  = exp(clamp(z_CO2,  z_lo, z_hi))
+  n_H2O  = exp(clamp(z_H2O,  z_lo, z_hi))
+  n_O2   = exp(clamp(z_O2,   z_lo, z_hi))
+  n_N2   = exp(clamp(z_N2,   z_lo, z_hi))
+  n_H2   = exp(clamp(z_H2,   z_lo, z_hi))
+  n_CO   = exp(clamp(z_CO,   z_lo, z_hi))
+  n_NO   = exp(clamp(z_NO,   z_lo, z_hi))
+  n_NO2  = exp(clamp(z_NO2,  z_lo, z_hi))
+
+  # Total moles (report variable only) — define using exp(clamp(z)) so it's always positive in evaluation.
+  n_tot = exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi))
+
+  # Mole fractions (report variables only) — use the same positive denominator expression.
+  y_C2H2 = exp(clamp(z_C2H2, z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))
+  y_C2H4 = exp(clamp(z_C2H4, z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))
+  y_CH4  = exp(clamp(z_CH4,  z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))
+  y_CO2  = exp(clamp(z_CO2,  z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))
+  y_H2O  = exp(clamp(z_H2O,  z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))
+  y_O2   = exp(clamp(z_O2,   z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))
+  y_N2   = exp(clamp(z_N2,   z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))
+  y_H2   = exp(clamp(z_H2,   z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))
+  y_CO   = exp(clamp(z_CO,   z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))
+  y_NO   = exp(clamp(z_NO,   z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))
+  y_NO2  = exp(clamp(z_NO2,  z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))
+
+  # ----------------------------
+  # Chemical potentials (dimensionless): phi_i = mu_i / (R_u*T)
+  # IMPORTANT: use yhat = exp(clamp(z_i))/sumexp directly (NOT y_* variables) to avoid ln() failures mid-iteration.
+  # ----------------------------
+  phi_C2H2 = (CTPropsSI("GMOLAR","T",exp(clamp(z_T, zT_lo, zT_hi)),"P",P_ref,"gri30.yaml|X=C2H2:1")/(R_u*exp(clamp(z_T, zT_lo, zT_hi)))) + ln( (exp(clamp(z_C2H2, z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))) * P / P_ref + eps_a )
+  phi_C2H4 = (CTPropsSI("GMOLAR","T",exp(clamp(z_T, zT_lo, zT_hi)),"P",P_ref,"gri30.yaml|X=C2H4:1")/(R_u*exp(clamp(z_T, zT_lo, zT_hi)))) + ln( (exp(clamp(z_C2H4, z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))) * P / P_ref + eps_a )
+  phi_CH4  = (CTPropsSI("GMOLAR","T",exp(clamp(z_T, zT_lo, zT_hi)),"P",P_ref,"gri30.yaml|X=CH4:1") /(R_u*exp(clamp(z_T, zT_lo, zT_hi)))) + ln( (exp(clamp(z_CH4,  z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))) * P / P_ref + eps_a )
+  phi_CO2  = (CTPropsSI("GMOLAR","T",exp(clamp(z_T, zT_lo, zT_hi)),"P",P_ref,"gri30.yaml|X=CO2:1") /(R_u*exp(clamp(z_T, zT_lo, zT_hi)))) + ln( (exp(clamp(z_CO2,  z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))) * P / P_ref + eps_a )
+  phi_H2O  = (CTPropsSI("GMOLAR","T",exp(clamp(z_T, zT_lo, zT_hi)),"P",P_ref,"gri30.yaml|X=H2O:1") /(R_u*exp(clamp(z_T, zT_lo, zT_hi)))) + ln( (exp(clamp(z_H2O,  z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))) * P / P_ref + eps_a )
+  phi_O2   = (CTPropsSI("GMOLAR","T",exp(clamp(z_T, zT_lo, zT_hi)),"P",P_ref,"gri30.yaml|X=O2:1")  /(R_u*exp(clamp(z_T, zT_lo, zT_hi)))) + ln( (exp(clamp(z_O2,   z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))) * P / P_ref + eps_a )
+  phi_N2   = (CTPropsSI("GMOLAR","T",exp(clamp(z_T, zT_lo, zT_hi)),"P",P_ref,"gri30.yaml|X=N2:1")  /(R_u*exp(clamp(z_T, zT_lo, zT_hi)))) + ln( (exp(clamp(z_N2,   z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))) * P / P_ref + eps_a )
+  phi_H2   = (CTPropsSI("GMOLAR","T",exp(clamp(z_T, zT_lo, zT_hi)),"P",P_ref,"gri30.yaml|X=H2:1")  /(R_u*exp(clamp(z_T, zT_lo, zT_hi)))) + ln( (exp(clamp(z_H2,   z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))) * P / P_ref + eps_a )
+  phi_CO   = (CTPropsSI("GMOLAR","T",exp(clamp(z_T, zT_lo, zT_hi)),"P",P_ref,"gri30.yaml|X=CO:1")  /(R_u*exp(clamp(z_T, zT_lo, zT_hi)))) + ln( (exp(clamp(z_CO,   z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))) * P / P_ref + eps_a )
+  phi_NO   = (CTPropsSI("GMOLAR","T",exp(clamp(z_T, zT_lo, zT_hi)),"P",P_ref,"gri30.yaml|X=NO:1")  /(R_u*exp(clamp(z_T, zT_lo, zT_hi)))) + ln( (exp(clamp(z_NO,   z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))) * P / P_ref + eps_a )
+  phi_NO2  = (CTPropsSI("GMOLAR","T",exp(clamp(z_T, zT_lo, zT_hi)),"P",P_ref,"gri30.yaml|X=NO2:1") /(R_u*exp(clamp(z_T, zT_lo, zT_hi)))) + ln( (exp(clamp(z_NO2,  z_lo, z_hi)) / (exp(clamp(z_C2H2, z_lo, z_hi)) + exp(clamp(z_C2H4, z_lo, z_hi)) + exp(clamp(z_CH4, z_lo, z_hi)) + exp(clamp(z_CO2, z_lo, z_hi)) + exp(clamp(z_H2O, z_lo, z_hi)) + exp(clamp(z_O2, z_lo, z_hi)) + exp(clamp(z_N2, z_lo, z_hi)) + exp(clamp(z_H2, z_lo, z_hi)) + exp(clamp(z_CO, z_lo, z_hi)) + exp(clamp(z_NO, z_lo, z_hi)) + exp(clamp(z_NO2, z_lo, z_hi)))) * P / P_ref + eps_a )
+
+  # ----------------------------
+  # Element balances (C,H,O,N) — use exp(clamp(z)) so they remain physically valid during iteration
+  # Species order: C2H2, C2H4, CH4, CO2, H2O, O2, N2, H2, CO, NO, NO2
+  # ----------------------------
+  (2.0)*exp(clamp(z_C2H2,z_lo,z_hi)) + (2.0)*exp(clamp(z_C2H4,z_lo,z_hi)) + (1.0)*exp(clamp(z_CH4,z_lo,z_hi)) + (1.0)*exp(clamp(z_CO2,z_lo,z_hi)) + (1.0)*exp(clamp(z_CO,z_lo,z_hi)) = E_C0
+  (2.0)*exp(clamp(z_C2H2,z_lo,z_hi)) + (4.0)*exp(clamp(z_C2H4,z_lo,z_hi)) + (4.0)*exp(clamp(z_CH4,z_lo,z_hi)) + (2.0)*exp(clamp(z_H2O,z_lo,z_hi)) + (2.0)*exp(clamp(z_H2,z_lo,z_hi)) = E_H0
+  (2.0)*exp(clamp(z_CO2,z_lo,z_hi)) + (1.0)*exp(clamp(z_H2O,z_lo,z_hi)) + (2.0)*exp(clamp(z_O2,z_lo,z_hi)) + (1.0)*exp(clamp(z_CO,z_lo,z_hi)) + (1.0)*exp(clamp(z_NO,z_lo,z_hi)) + (2.0)*exp(clamp(z_NO2,z_lo,z_hi)) = E_O0
+  (2.0)*exp(clamp(z_N2,z_lo,z_hi)) + (1.0)*exp(clamp(z_NO,z_lo,z_hi)) + (1.0)*exp(clamp(z_NO2,z_lo,z_hi)) = E_N0
+
+  # ----------------------------
+  # Lagrange method of undetermined multipliers (dimensionless lambdas)
+  # phi_i + sum_j lam_j * e_{i,j} = 0
+  # ----------------------------
+  phi_C2H2 + (2.0)*lam_C + (2.0)*lam_H + (0.0)*lam_O + (0.0)*lam_N = 0.0
+  phi_C2H4 + (2.0)*lam_C + (4.0)*lam_H + (0.0)*lam_O + (0.0)*lam_N = 0.0
+  phi_CH4  + (1.0)*lam_C + (4.0)*lam_H + (0.0)*lam_O + (0.0)*lam_N = 0.0
+  phi_CO2  + (1.0)*lam_C + (0.0)*lam_H + (2.0)*lam_O + (0.0)*lam_N = 0.0
+  phi_H2O  + (0.0)*lam_C + (2.0)*lam_H + (1.0)*lam_O + (0.0)*lam_N = 0.0
+  phi_O2   + (0.0)*lam_C + (0.0)*lam_H + (2.0)*lam_O + (0.0)*lam_N = 0.0
+  phi_N2   + (0.0)*lam_C + (0.0)*lam_H + (0.0)*lam_O + (2.0)*lam_N = 0.0
+  phi_H2   + (0.0)*lam_C + (2.0)*lam_H + (0.0)*lam_O + (0.0)*lam_N = 0.0
+  phi_CO   + (1.0)*lam_C + (0.0)*lam_H + (1.0)*lam_O + (0.0)*lam_N = 0.0
+  phi_NO   + (0.0)*lam_C + (0.0)*lam_H + (1.0)*lam_O + (1.0)*lam_N = 0.0
+  phi_NO2  + (0.0)*lam_C + (0.0)*lam_H + (2.0)*lam_O + (1.0)*lam_N = 0.0
+
+  # ----------------------------
+  # Energy balance (adiabatic): H_reactants(T_in) = H_products(T_out)
+  # Use exp(clamp(z)) directly so H_out can't go negative mid-iteration.
+  # ----------------------------
+  H_R   = n0_C2H2*CTPropsSI("HMOLAR","T",T_in,"P",P_ref,"gri30.yaml|X=C2H2:1") + n0_O2*CTPropsSI("HMOLAR","T",T_in,"P",P_ref,"gri30.yaml|X=O2:1") + n0_N2*CTPropsSI("HMOLAR","T",T_in,"P",P_ref,"gri30.yaml|X=N2:1")
+  H_out = exp(clamp(z_C2H2,z_lo,z_hi))*CTPropsSI("HMOLAR","T",exp(clamp(z_T,zT_lo,zT_hi)),"P",P_ref,"gri30.yaml|X=C2H2:1") + exp(clamp(z_C2H4,z_lo,z_hi))*CTPropsSI("HMOLAR","T",exp(clamp(z_T,zT_lo,zT_hi)),"P",P_ref,"gri30.yaml|X=C2H4:1") + exp(clamp(z_CH4,z_lo,z_hi))*CTPropsSI("HMOLAR","T",exp(clamp(z_T,zT_lo,zT_hi)),"P",P_ref,"gri30.yaml|X=CH4:1") + exp(clamp(z_CO2,z_lo,z_hi))*CTPropsSI("HMOLAR","T",exp(clamp(z_T,zT_lo,zT_hi)),"P",P_ref,"gri30.yaml|X=CO2:1") + exp(clamp(z_H2O,z_lo,z_hi))*CTPropsSI("HMOLAR","T",exp(clamp(z_T,zT_lo,zT_hi)),"P",P_ref,"gri30.yaml|X=H2O:1") + exp(clamp(z_O2,z_lo,z_hi))*CTPropsSI("HMOLAR","T",exp(clamp(z_T,zT_lo,zT_hi)),"P",P_ref,"gri30.yaml|X=O2:1") + exp(clamp(z_N2,z_lo,z_hi))*CTPropsSI("HMOLAR","T",exp(clamp(z_T,zT_lo,zT_hi)),"P",P_ref,"gri30.yaml|X=N2:1") + exp(clamp(z_H2,z_lo,z_hi))*CTPropsSI("HMOLAR","T",exp(clamp(z_T,zT_lo,zT_hi)),"P",P_ref,"gri30.yaml|X=H2:1") + exp(clamp(z_CO,z_lo,z_hi))*CTPropsSI("HMOLAR","T",exp(clamp(z_T,zT_lo,zT_hi)),"P",P_ref,"gri30.yaml|X=CO:1") + exp(clamp(z_NO,z_lo,z_hi))*CTPropsSI("HMOLAR","T",exp(clamp(z_T,zT_lo,zT_hi)),"P",P_ref,"gri30.yaml|X=NO:1") + exp(clamp(z_NO2,z_lo,z_hi))*CTPropsSI("HMOLAR","T",exp(clamp(z_T,zT_lo,zT_hi)),"P",P_ref,"gri30.yaml|X=NO2:1")
+  H_R = H_out
+
+  # ----------------------------
+  # Objective diagnostics (not optimized here; just reported)
+  # ----------------------------
+  Ghat = exp(clamp(z_C2H2,z_lo,z_hi))*phi_C2H2 + exp(clamp(z_C2H4,z_lo,z_hi))*phi_C2H4 + exp(clamp(z_CH4,z_lo,z_hi))*phi_CH4 + exp(clamp(z_CO2,z_lo,z_hi))*phi_CO2 + exp(clamp(z_H2O,z_lo,z_hi))*phi_H2O + exp(clamp(z_O2,z_lo,z_hi))*phi_O2 + exp(clamp(z_N2,z_lo,z_hi))*phi_N2 + exp(clamp(z_H2,z_lo,z_hi))*phi_H2 + exp(clamp(z_CO,z_lo,z_hi))*phi_CO + exp(clamp(z_NO,z_lo,z_hi))*phi_NO + exp(clamp(z_NO2,z_lo,z_hi))*phi_NO2
+  G = Ghat * R_u * exp(clamp(z_T, zT_lo, zT_hi))
+
+report:
+  # Inputs / reactants
+  ta, a_s, a
+  T_in, P, P_ref
+  n0_C2H2, n0_O2, n0_N2
+  E_C0, E_H0, E_O0, E_N0
+
+  # Primary results
+  T_out
+  n_C2H2, n_C2H4, n_CH4, n_CO2, n_H2O, n_O2, n_N2, n_H2, n_CO, n_NO, n_NO2
+  n_tot
+  y_C2H2, y_C2H4, y_CH4, y_CO2, y_H2O, y_O2, y_N2, y_H2, y_CO, y_NO, y_NO2
+
+  # Multipliers and diagnostics
+  lam_C, lam_H, lam_O, lam_N
+  H_R, H_out
+  Ghat, G
+
+solve:
+  backend = scipy
+  method = krylov
+  tol = 1e-10
+  max_iter = 800
+  max_restarts = 4
+  thermo_penalty = 1e9
+  warm_start = 1
+  warm_start_passes = 8
+  warm_start_mode = override
+  auto_guess = 1

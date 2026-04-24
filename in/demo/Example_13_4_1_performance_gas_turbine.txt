@@ -1,0 +1,232 @@
+title: Klein & Nellis Example 13.4-1 — Performance of a Gas Turbine Engine (CH4, 300% excess air) — SI molar (J, K, Pa)
+
+given:
+  # ---------------- inputs ----------------
+  T_amb_C       = 20.0
+  P_amb_atm     = 1.0
+  eta_c         = 0.76
+
+  T_f_C         = 15.0
+  P_c_out_atm   = 6.0
+
+  ea            = 3.0          # 300% excess air  (=> 400% theoretical air)
+  eta_t         = 0.83
+
+  W_dot_gen_kW  = 500.0
+  eta_gen       = 0.92
+
+  # ---------------- constants ----------------
+  C_to_K        = 273.15
+  atm_to_Pa     = 101325.0
+  kW_to_W       = 1000.0
+  P_ig          = 101325.0     # reference pressure for species property eval
+  T_ref         = 298.15       # 25 C (reference for "standardized enthalpy")
+
+  y_O2_air      = 0.21
+  y_N2_air      = 0.79
+
+  # formation enthalpies at 25 C, J/mol (used to build "standardized molar enthalpy")
+  h_form_CH4_g  = -74850.0
+  h_form_CO2_g  = -393520.0
+  h_form_H2O_g  = -241826.0
+  h_form_O2_g   = 0.0
+  h_form_N2_g   = 0.0
+
+  # ---------------- CoolProp fluid names ----------------
+  fluid_air     = "Air"            # if Air gives trouble, try "HEOS::Air"
+  fluid_CH4     = "Methane"
+  fluid_CO2     = "CarbonDioxide"
+  fluid_H2O     = "Water"
+  fluid_O2      = "Oxygen"
+  fluid_N2      = "Nitrogen"
+
+  # ---------------- unit conversions ----------------
+  T_1           = T_amb_C + C_to_K
+  P_1           = P_amb_atm * atm_to_Pa
+  P_2           = P_c_out_atm * atm_to_Pa
+
+  T_f           = T_f_C + C_to_K
+  W_dot_gen     = W_dot_gen_kW * kW_to_W
+
+  # ---------------- reaction bookkeeping ----------------
+  # Stoich for CH4: CH4 + 2 O2 -> CO2 + 2 H2O
+  a_s           = 2.0 / y_O2_air              # stoich moles of air per mole CH4
+  a             = (1.0 + ea) * a_s            # actual moles of air per mole CH4 (excess air)
+
+  b             = 1.0                         # CO2 coefficient
+  c             = 2.0                         # H2O coefficient
+  d             = y_N2_air * a                # N2 coefficient
+  e_O2          = y_O2_air * a - 2.0          # leftover O2 coefficient
+
+  n_P           = b + c + d + e_O2            # total product moles per mole fuel
+
+  y_CO2_P       = b / n_P
+  y_H2O_P       = c / n_P
+  y_N2_P        = d / n_P
+  y_O2_P        = e_O2 / n_P
+
+guess:
+  # reasonable starting guesses (book answers: T2≈547.6 K, T3≈1161 K, Vdot1≈2.299 m^3/s, eta≈0.2483)
+  T_2           = 550.0
+  T_3           = 1200.0
+  T_s_4         = 800.0
+  n_dot_CH4     = 2.5
+
+equations:
+  # ======================================================
+  # (a) Compressor: find T2 using isentropic efficiency
+  # ======================================================
+  h_1_mass      = PropsSI("H", "T", T_1, "P", P_1, fluid_air)
+  s_1_mass      = PropsSI("S", "T", T_1, "P", P_1, fluid_air)
+  rho_1         = PropsSI("D", "T", T_1, "P", P_1, fluid_air)
+  MW_air        = PropsSI("M", "T", T_1, "P", P_1, fluid_air)
+
+  v_bar_1       = MW_air / rho_1              # m^3/mol
+  h_bar_1       = h_1_mass * MW_air           # J/mol
+
+  h_s_2_mass    = PropsSI("H", "P", P_2, "S", s_1_mass, fluid_air)
+  h_2_mass      = h_1_mass + (h_s_2_mass - h_1_mass)/eta_c
+  T_2           = PropsSI("T", "P", P_2, "H", h_2_mass, fluid_air)
+
+  h_bar_2       = h_2_mass * MW_air
+  T_2_C         = T_2 - C_to_K
+
+  # ======================================================
+  # (b) Combustor: find T3 from energy balance (adiabatic)
+  # Use "standardized molar enthalpy":
+  #   h_std(T) = h_form(25C) + [H_molar(T,P_ig) - H_molar(25C,P_ig or vapor-ref)]
+  # ======================================================
+
+  # --- reactants standardized molar enthalpies ---
+  HMOLAR_CH4_R  = PropsSI("HMOLAR", "T", T_f,   "P", P_ig, fluid_CH4)
+  HMOLAR_CH4_ref= PropsSI("HMOLAR", "T", T_ref, "P", P_ig, fluid_CH4)
+  h_CH4_R       = h_form_CH4_g + (HMOLAR_CH4_R - HMOLAR_CH4_ref)
+
+  HMOLAR_O2_R   = PropsSI("HMOLAR", "T", T_2,   "P", P_ig, fluid_O2)
+  HMOLAR_O2_ref = PropsSI("HMOLAR", "T", T_ref, "P", P_ig, fluid_O2)
+  h_O2_R        = h_form_O2_g + (HMOLAR_O2_R - HMOLAR_O2_ref)
+
+  HMOLAR_N2_R   = PropsSI("HMOLAR", "T", T_2,   "P", P_ig, fluid_N2)
+  HMOLAR_N2_ref = PropsSI("HMOLAR", "T", T_ref, "P", P_ig, fluid_N2)
+  h_N2_R        = h_form_N2_g + (HMOLAR_N2_R - HMOLAR_N2_ref)
+
+  # enthalpy of reactants entering combustor per mole fuel
+  H_R           = h_CH4_R + (y_O2_air*a)*h_O2_R + (y_N2_air*a)*h_N2_R
+
+  # --- products standardized molar enthalpies at T3 ---
+  HMOLAR_CO2_P  = PropsSI("HMOLAR", "T", T_3,   "P", P_ig, fluid_CO2)
+  HMOLAR_CO2_ref= PropsSI("HMOLAR", "T", T_ref, "P", P_ig, fluid_CO2)
+  h_CO2_P       = h_form_CO2_g + (HMOLAR_CO2_P - HMOLAR_CO2_ref)
+
+  HMOLAR_H2O_P  = PropsSI("HMOLAR", "T", T_3,   "P", P_ig, fluid_H2O)
+  HMOLAR_H2O_g_ref = PropsSI("HMOLAR", "T", T_ref, "Q", 1, fluid_H2O)   # vapor ref at 25C
+  h_H2O_P       = h_form_H2O_g + (HMOLAR_H2O_P - HMOLAR_H2O_g_ref)
+
+  HMOLAR_N2_P   = PropsSI("HMOLAR", "T", T_3,   "P", P_ig, fluid_N2)
+  h_N2_P        = h_form_N2_g + (HMOLAR_N2_P - HMOLAR_N2_ref)
+
+  HMOLAR_O2_P   = PropsSI("HMOLAR", "T", T_3,   "P", P_ig, fluid_O2)
+  h_O2_P        = h_form_O2_g + (HMOLAR_O2_P - HMOLAR_O2_ref)
+
+  H_P           = b*h_CO2_P + c*h_H2O_P + d*h_N2_P + e_O2*h_O2_P
+
+  # combustor energy balance (adiabatic, no pressure loss)
+  H_P           = H_R
+
+  T_3_C         = T_3 - C_to_K
+  P_3           = P_2
+
+  # ======================================================
+  # (c) Turbine: find T_s4 from isentropic condition on products
+  #   S_P(T3,P3) = S_s4(Ts4,P4)
+  # ======================================================
+  P_4           = P_1
+
+  P_CO2_3       = y_CO2_P * P_3
+  P_H2O_3       = y_H2O_P * P_3
+  P_N2_3        = y_N2_P  * P_3
+  P_O2_3        = y_O2_P  * P_3
+
+  s_CO2_P       = PropsSI("SMOLAR", "T", T_3, "P", P_CO2_3, fluid_CO2)
+  s_H2O_P       = PropsSI("SMOLAR", "T", T_3, "P", P_H2O_3, fluid_H2O)
+  s_N2_P        = PropsSI("SMOLAR", "T", T_3, "P", P_N2_3,  fluid_N2)
+  s_O2_P        = PropsSI("SMOLAR", "T", T_3, "P", P_O2_3,  fluid_O2)
+
+  S_P           = b*s_CO2_P + c*s_H2O_P + d*s_N2_P + e_O2*s_O2_P
+
+  P_CO2_4       = y_CO2_P * P_4
+  P_H2O_4       = y_H2O_P * P_4
+  P_N2_4        = y_N2_P  * P_4
+  P_O2_4        = y_O2_P  * P_4
+
+  s_CO2_s4      = PropsSI("SMOLAR", "T", T_s_4, "P", P_CO2_4, fluid_CO2)
+  s_H2O_s4      = PropsSI("SMOLAR", "T", T_s_4, "P", P_H2O_4, fluid_H2O)
+  s_N2_s4       = PropsSI("SMOLAR", "T", T_s_4, "P", P_N2_4,  fluid_N2)
+  s_O2_s4       = PropsSI("SMOLAR", "T", T_s_4, "P", P_O2_4,  fluid_O2)
+
+  S_s4          = b*s_CO2_s4 + c*s_H2O_s4 + d*s_N2_s4 + e_O2*s_O2_s4
+
+  # isentropic turbine condition
+  S_s4          = S_P
+
+  # enthalpy of products at isentropic turbine exit (standardized)
+  HMOLAR_CO2_s4 = PropsSI("HMOLAR", "T", T_s_4, "P", P_ig, fluid_CO2)
+  h_CO2_s4      = h_form_CO2_g + (HMOLAR_CO2_s4 - HMOLAR_CO2_ref)
+
+  HMOLAR_H2O_s4 = PropsSI("HMOLAR", "T", T_s_4, "P", P_ig, fluid_H2O)
+  h_H2O_s4      = h_form_H2O_g + (HMOLAR_H2O_s4 - HMOLAR_H2O_g_ref)
+
+  HMOLAR_N2_s4  = PropsSI("HMOLAR", "T", T_s_4, "P", P_ig, fluid_N2)
+  h_N2_s4       = h_form_N2_g + (HMOLAR_N2_s4 - HMOLAR_N2_ref)
+
+  HMOLAR_O2_s4  = PropsSI("HMOLAR", "T", T_s_4, "P", P_ig, fluid_O2)
+  h_O2_s4       = h_form_O2_g + (HMOLAR_O2_s4 - HMOLAR_O2_ref)
+
+  H_s4          = b*h_CO2_s4 + c*h_H2O_s4 + d*h_N2_s4 + e_O2*h_O2_s4
+
+  # turbine isentropic efficiency (per mol fuel)
+  H_4           = H_P - eta_t*(H_P - H_s4)
+
+  # ======================================================
+  # (c continued) Power balance -> solve for fuel flow
+  # ======================================================
+  n_dot_air     = a * n_dot_CH4
+
+  W_dot_t       = n_dot_CH4 * (H_P - H_4)
+  W_dot_c       = n_dot_air * (h_bar_2 - h_bar_1)
+
+  W_dot_gen     = (W_dot_t - W_dot_c) * eta_gen
+
+  V_dot_1       = n_dot_air * v_bar_1   # m^3/s at compressor inlet (state 1)
+
+  # ======================================================
+  # (d) Thermal efficiency based on methane LHV (molar)
+  # LHV = h_CH4_ref - 2*h_H2O_g_ref - h_CO2_ref  (standardized, 25C)
+  # ======================================================
+  h_CH4_ref     = h_form_CH4_g
+  h_CO2_ref     = h_form_CO2_g
+  h_H2O_g_ref   = h_form_H2O_g
+
+  LHV           = h_CH4_ref - 2.0*h_H2O_g_ref - h_CO2_ref
+  eta_LHV       = W_dot_gen / (n_dot_CH4 * LHV)
+
+report:
+  # --- textbook targets (K&N) ---
+  # T2 ≈ 547.6 K (274.4 C)
+  # T3 ≈ 1161 K (887.4 C)
+  # V_dot_1 ≈ 2.299 m^3/s
+  # eta_LHV ≈ 0.2483
+
+  T_2
+  T_2_C
+  T_3
+  T_3_C
+  T_s_4
+  n_dot_CH4
+  n_dot_air
+  V_dot_1
+  eta_LHV
+  y_CO2_P
+  y_H2O_P
+  y_N2_P
+  y_O2_P

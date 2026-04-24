@@ -1,0 +1,205 @@
+title: Klein & Nellis Example 13.2-1 — Combustion of a Producer Gas (150% stoich; dry + moist air)
+
+given:
+  # -----------------------------
+  # Problem inputs (book Table 1)
+  # Basis: 1 kmol producer gas
+  # -----------------------------
+  y_CH4  = 0.038
+  y_C2H6 = 0.001
+  y_CO2  = 0.048
+  y_H2   = 0.117
+  y_O2   = 0.006
+  y_CO   = 0.232
+  # y_N2 is balance
+
+  # Dry air composition (book)
+  y_O2_air = 0.21
+  y_N2_air = 0.79
+
+  # Excess-air factor (150% stoich)
+  StoichiometricAir = 1.5
+
+  # Pressure (Pa)
+  P = 101325
+
+  # Temperatures for parts (c) and (d)
+  T2_C = 25
+  T_air_C = 25
+  phi_air = 0.5
+
+  # Unit helper
+  C_to_K = 273.15
+
+  # -----------------------------
+  # Molar masses (kg/kmol)
+  # Note: book/EES uses MolarMass(Air) ~ 28.97 (includes trace species);
+  # use 28.97 to match AF=2.027 in the text.
+  # -----------------------------
+  MW_CH4  = 16.04246
+  MW_C2H6 = 30.06904
+  MW_CO2  = 44.00950
+  MW_H2   = 2.01588
+  MW_O2   = 31.99880
+  MW_CO   = 28.01010
+  MW_N2   = 28.01340
+  MW_H2O  = 18.01528
+  MW_air  = 28.97
+
+  # -----------------------------
+  # Close fuel composition
+  # -----------------------------
+  y_N2 = 1 - y_CH4 - y_C2H6 - y_CO2 - y_H2 - y_O2 - y_CO
+
+  # Fuel mixture molar mass (kg/kmol)
+  MW_f = y_CH4*MW_CH4 + y_C2H6*MW_C2H6 + y_CO2*MW_CO2 + y_H2*MW_H2 + y_O2*MW_O2 + y_CO*MW_CO + y_N2*MW_N2
+
+  # -----------------------------
+  # (a) Stoichiometric reaction coefficients (closed-form)
+  # (mixture) + a_s(0.21 O2 + 0.79 N2) -> b_s CO2 + c_s H2O + d_s N2
+  # -----------------------------
+  b_s = y_CH4 + 2*y_C2H6 + y_CO2 + y_CO
+  c_s = (4*y_CH4 + 6*y_C2H6 + 2*y_H2) / 2
+  a_s = (2*b_s + c_s - (2*y_CO2 + 2*y_O2 + y_CO)) / (2*y_O2_air)
+  d_s = y_N2 + y_N2_air*a_s
+
+  # Actual moles of dry air at 150% stoich
+  a = StoichiometricAir * a_s
+
+  # Actual products with excess air:
+  # (mixture) + a(0.21 O2 + 0.79 N2) -> b CO2 + c H2O + d N2 + e_O2 O2
+  b = b_s
+  c = c_s
+  d = y_N2 + y_N2_air*a
+  e_O2 = (2*y_CO2 + 2*y_O2 + y_CO + 2*y_O2_air*a - (2*b + c)) / 2
+
+  # Air-fuel ratio (kg air / kg fuel): AF = a*MW_air / MW_f
+  AF = a*MW_air / MW_f
+
+  # Helpful totals (constant)
+  n_dry_prod = b + d + e_O2
+  n_tot_dry  = n_dry_prod + c
+
+  # Dry-products water mole fraction and partial pressure (part b)
+  y_v_dry = c / n_tot_dry
+  P_v_dry = y_v_dry * P
+
+  # Temperature values in K
+  T2_K     = C_to_K + T2_C
+  T_air_K  = C_to_K + T_air_C
+
+equations:
+  # ============================================================
+  # (b) Dew point of products @ 1 atm (dry air case)
+  # ============================================================
+  T_dp_dry_K = PropsSI("T","P",P_v_dry,"Q",0,"Water")
+  T_dp_dry_C = T_dp_dry_K - C_to_K
+
+  # ============================================================
+  # (c) Condensate when products cooled to T2_C @ 1 atm (dry air)
+  # Products saturated at T2: y_v_2 = P_sat(T2)/P
+  # n_H2O_g = y_v_2*(b+d+e)/(1-y_v_2)
+  # r = (n_H2O_f*MW_H2O)/MW_f  where n_H2O_f = c - n_H2O_g
+  # ============================================================
+  P_sat_T2 = PropsSI("P","T",T2_K,"Q",0,"Water")
+
+  # y_v_2*P = P_sat_T2
+  y_v_2*P = P_sat_T2
+
+  # n_H2O_g_T2*(1 - y_v_2) = y_v_2*(b + d + e_O2)
+  n_H2O_g_T2*(1 - y_v_2) = y_v_2*n_dry_prod
+
+  n_H2O_f_dry = c - n_H2O_g_T2
+
+  # r_dry*MW_f = n_H2O_f_dry*MW_H2O
+  r_dry*MW_f = n_H2O_f_dry*MW_H2O
+
+  # ============================================================
+  # (d) Repeat (b) and (c) with moist air @ 25C, 1 atm, RH=50%
+  # Moist-air humidity ratio:
+  #   Pv_air = phi * Pws(T_air)
+  #   omega = 0.62198*Pv_air/(P - Pv_air)
+  # Water in reactants:
+  #   f = a*MW_air*omega/MW_H2O
+  # Products water coefficient becomes:
+  #   c_m = c + f
+  # (b,d,e are unchanged; water added to reactants becomes water in products)
+  # ============================================================
+  P_ws_air = PropsSI("P","T",T_air_K,"Q",0,"Water")
+  P_v_air  = phi_air * P_ws_air
+
+  # omega*(P - P_v_air) = 0.62198*P_v_air
+  omega*(P - P_v_air) = 0.62198*P_v_air
+
+  # f*MW_H2O = a*MW_air*omega
+  f*MW_H2O = a*MW_air*omega
+
+  c_m = c + f
+
+  # y_v_m = c_m / (b + d + e_O2 + c_m)  -> multiplicative form
+  y_v_m*(n_dry_prod + c_m) = c_m
+
+  P_v_m = y_v_m * P
+
+  T_dp_m_K = PropsSI("T","P",P_v_m,"Q",0,"Water")
+  T_dp_m_C = T_dp_m_K - C_to_K
+
+  # Condensate at T2 uses same n_H2O_g_T2 (depends only on saturation & dry products)
+  n_H2O_f_m = c_m - n_H2O_g_T2
+
+  # r_m*MW_f = n_H2O_f_m*MW_H2O
+  r_m*MW_f = n_H2O_f_m*MW_H2O
+
+report:
+  # Inputs / composition
+  y_CH4
+  y_C2H6
+  y_CO2
+  y_H2
+  y_O2
+  y_CO
+  y_N2
+
+  # Stoichiometric coefficients
+  a_s
+  b_s
+  c_s
+  d_s
+
+  # 150% stoich actual coefficients
+  StoichiometricAir
+  a
+  b
+  c
+  d
+  e_O2
+
+  # Air-fuel ratio + molar masses
+  MW_air
+  MW_f
+  AF
+
+  # Dew point + condensate (dry air)
+  y_v_dry
+  P_v_dry
+  T_dp_dry_K
+  T_dp_dry_C
+  P_sat_T2
+  y_v_2
+  n_H2O_g_T2
+  n_H2O_f_dry
+  r_dry
+
+  # Moist-air case
+  phi_air
+  P_ws_air
+  P_v_air
+  omega
+  f
+  c_m
+  y_v_m
+  P_v_m
+  T_dp_m_K
+  T_dp_m_C
+  n_H2O_f_m
+  r_m

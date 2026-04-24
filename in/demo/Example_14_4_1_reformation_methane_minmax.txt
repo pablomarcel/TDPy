@@ -1,0 +1,97 @@
+title: Klein & Nellis Example 14.4-1 — Methane Reforming (Revisited) — Gibbs Minimization (SLSQP, n_i vars)
+
+given:
+  # Feed (kmol)
+  n0_CH4 = 2.0
+  n0_H2O = 3.0
+  n0_CO2 = 1.0
+
+  # Conditions
+  T      = 1100.0        # K
+  P_bar  = 1.0           # bar
+  P      = P_bar*1e5     # Pa
+
+  # Reference pressure for standard-state Gibbs
+  P_ref  = 101325.0      # Pa   (try 1e5 if you want strict Cantera std-state at 1 bar)
+
+  # Universal gas constant on kmol basis
+  R_u    = 8314.462618   # J/(kmol*K)
+
+  # Numerical safety
+  eps_a  = 1e-30
+
+  # Standard-state molar Gibbs at (T, P_ref), normalized by (R_u*T)
+  g0hat_CH4 = CTPropsSI("GMOLAR","T",T,"P",P_ref,"gri30.yaml|X=CH4:1")/(R_u*T)
+  g0hat_H2O = CTPropsSI("GMOLAR","T",T,"P",P_ref,"gri30.yaml|X=H2O:1")/(R_u*T)
+  g0hat_CO  = CTPropsSI("GMOLAR","T",T,"P",P_ref,"gri30.yaml|X=CO:1") /(R_u*T)
+  g0hat_H2  = CTPropsSI("GMOLAR","T",T,"P",P_ref,"gri30.yaml|X=H2:1") /(R_u*T)
+  g0hat_CO2 = CTPropsSI("GMOLAR","T",T,"P",P_ref,"gri30.yaml|X=CO2:1")/(R_u*T)
+
+design_vars:
+  n_CH4, n_H2O, n_CO, n_H2, n_CO2
+
+bounds:
+  n_CH4: [1e-20, 1e9]
+  n_H2O: [1e-20, 1e9]
+  n_CO:  [1e-20, 1e9]
+  n_H2:  [1e-20, 1e9]
+  n_CO2: [1e-20, 1e9]
+
+  n_tot: [1e-12, 1e9]
+
+  y_CH4: [0, 1]
+  y_H2O: [0, 1]
+  y_CO:  [0, 1]
+  y_H2:  [0, 1]
+  y_CO2: [0, 1]
+
+objective:
+  min Ghat
+
+equations:
+  # Element balances (C, H, O)
+  n_CH4 + n_CO + n_CO2 = n0_CH4 + n0_CO2
+  4*n_CH4 + 2*n_H2O + 2*n_H2 = 4*n0_CH4 + 2*n0_H2O
+  n_H2O + n_CO + 2*n_CO2 = n0_H2O + 2*n0_CO2
+
+  # Mixture bookkeeping
+  n_tot = n_CH4 + n_H2O + n_CO + n_H2 + n_CO2
+
+  y_CH4 = n_CH4/n_tot
+  y_H2O = n_H2O/n_tot
+  y_CO  = n_CO /n_tot
+  y_H2  = n_H2 /n_tot
+  y_CO2 = n_CO2/n_tot
+
+  # Gibbs (dimensionless): Ghat = G/(R_u*T)
+  Ghat = n_CH4*(g0hat_CH4 + ln(y_CH4*P/P_ref + eps_a)) + n_H2O*(g0hat_H2O + ln(y_H2O*P/P_ref + eps_a)) + n_CO*(g0hat_CO + ln(y_CO*P/P_ref + eps_a)) + n_H2*(g0hat_H2 + ln(y_H2*P/P_ref + eps_a)) + n_CO2*(g0hat_CO2 + ln(y_CO2*P/P_ref + eps_a))
+
+  G = Ghat * R_u * T
+
+guesses:
+  ? n_CH4 = 0.35
+  ? n_H2O = 1.70
+  ? n_CO  = 2.00
+  ? n_H2  = 4.60
+  ? n_CO2 = 0.65
+  ? n_tot = 9.30
+  ? y_CH4 = 0.03763440860215054
+  ? y_H2O = 0.1827956989247312
+  ? y_CO  = 0.21505376344086022
+  ? y_H2  = 0.4946236559139785
+  ? y_CO2 = 0.06989247311827956
+  ? Ghat  = -315.6
+  ? G     = -2.9e9
+
+report:
+  T, P_bar, P, P_ref
+  n_CH4, n_H2O, n_CO, n_H2, n_CO2, n_tot
+  y_CH4, y_H2O, y_CO, y_H2, y_CO2
+  Ghat, G
+
+solve:
+  backend = scipy
+  method = SLSQP
+  tol = 1e-10
+  max_iter = 1500
+  max_restarts = 2

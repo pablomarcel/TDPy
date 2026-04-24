@@ -1,0 +1,102 @@
+title: Klein & Nellis Example 13.3-1 — Heating Value of a Producer Gas (LHV + HHV)
+
+given:
+  # Basis: 1 kmol dry producer gas at 25°C reference.
+  # Complete combustion to CO2, H2O, N2.
+  # LHV: water as vapor; HHV: water as liquid.
+  # Formation enthalpies are kJ/kmol.
+
+  # Producer-gas molar composition (kmol species / kmol producer gas)
+  y_CH4  = 0.038
+  y_C2H6 = 0.001
+  y_CO2  = 0.048
+  y_H2   = 0.117
+  y_O2   = 0.006
+  y_CO   = 0.232
+
+  # Air composition (molar)
+  y_O2_air = 0.21
+  y_N2_air = 0.79
+
+  # Standard enthalpies of formation at 25°C (kJ/kmol) — Table 13-2
+  h_form_CH4_g  = -74595
+  h_form_C2H6_g = -83846
+  h_form_CO2_g  = -393486
+  h_form_CO_g   = -110528
+  h_form_H2O_v  = -241811   # vapor water (LHV)
+  h_form_H2O_l  = -285813   # liquid water (HHV)
+  h_form_O2_g   = 0
+  h_form_N2_g   = 0
+  h_form_H2_g   = 0
+
+  # Molar masses (kg/kmol)
+  MW_CH4  = 16.04246
+  MW_C2H6 = 30.06904
+  MW_CO2  = 44.00950
+  MW_H2   = 2.01588
+  MW_O2   = 31.99880
+  MW_CO   = 28.01010
+  MW_N2   = 28.01340
+
+  # Close mixture composition
+  y_N2 = 1 - y_CH4 - y_C2H6 - y_CO2 - y_H2 - y_O2 - y_CO
+
+  # Mixture molar mass (kg/kmol producer gas)
+  MW_f = y_CH4*MW_CH4 + y_C2H6*MW_C2H6 + y_CO2*MW_CO2 + y_H2*MW_H2 + y_O2*MW_O2 + y_CO*MW_CO + y_N2*MW_N2
+
+  # Carbon and hydrogen balances -> direct (no need to solve)
+  b_s = y_CH4 + 2*y_C2H6 + y_CO2 + y_CO
+  c_s = (4*y_CH4 + 6*y_C2H6 + 2*y_H2) / 2
+
+  # Reactant enthalpy at 25°C per kmol producer gas (kJ/kmol)
+  H_R = y_CH4*h_form_CH4_g + y_C2H6*h_form_C2H6_g + y_CO2*h_form_CO2_g + y_CO*h_form_CO_g
+
+  # Scaling constants (avoid scientific notation like 1e4 that can confuse the parser)
+  SCALE_KJ_PER_KG = 10000.0
+  SCALE_MJ_PER_KMOL = 1000.0
+
+equations:
+  # Unknowns: a_s, d_s, H_P_lhv, LHV, H_P_hhv, HHV, LHV_m, HHV_m, LHV_MJkmol, HHV_MJkmol
+
+  # Oxygen balance -> solve a_s
+  2*y_CO2 + 2*y_O2 + y_CO + 2*y_O2_air*a_s = 2*b_s + c_s
+
+  # Nitrogen balance -> solve d_s
+  2*y_N2 + 2*y_N2_air*a_s = 2*d_s
+
+  # Products enthalpy and heating values (kJ/kmol)
+  H_P_lhv = b_s*h_form_CO2_g + c_s*h_form_H2O_v + d_s*h_form_N2_g
+  LHV     = H_R - H_P_lhv
+
+  H_P_hhv = b_s*h_form_CO2_g + c_s*h_form_H2O_l + d_s*h_form_N2_g
+  HHV     = H_R - H_P_hhv
+
+  # Scaled definition equations (keeps residual_norm comfortably < tol)
+  0 = (LHV_m      - (LHV / MW_f))     / SCALE_KJ_PER_KG
+  0 = (HHV_m      - (HHV / MW_f))     / SCALE_KJ_PER_KG
+  0 = (LHV_MJkmol - (LHV / 1000.0))   / SCALE_MJ_PER_KMOL
+  0 = (HHV_MJkmol - (HHV / 1000.0))   / SCALE_MJ_PER_KMOL
+
+solve:
+  backend: auto
+  method: hybr
+  tol: 1e-9
+  max_iter: 200
+  max_restarts: 2
+
+report:
+  y_N2
+  MW_f
+  a_s
+  b_s
+  c_s
+  d_s
+  H_R
+  H_P_lhv
+  LHV
+  LHV_m
+  H_P_hhv
+  HHV
+  HHV_m
+  LHV_MJkmol
+  HHV_MJkmol

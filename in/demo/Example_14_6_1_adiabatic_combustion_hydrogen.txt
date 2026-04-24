@@ -1,0 +1,126 @@
+title: Klein & Nellis Example 14.6-1 (Adiabatic Combustion of Hydrogen) — Chemical Equilibrium (Lagrange multipliers), CTPropsSI — v6 (fix energy-balance parsing + robust ln)
+
+given:
+  # ----------------------------
+  # Inputs (SI, molar)
+  # ----------------------------
+  T_1    = 1000.0       # K
+  P_bar  = 10.0         # bar
+  P      = P_bar * 1e5  # Pa
+
+  # Initial amounts (book basis: kmol)
+  n0_H2   = 1.0         # kmol
+  n0_O2   = 2.0         # kmol
+  n0_H2O  = 0.0         # kmol
+
+  # Reference pressure for standard-state chemical potentials
+  P_ref = 101325.0      # Pa
+
+  # Universal gas constant (J/(kmol*K))
+  R_u   = 8314.462618
+
+  # Numerical safeties
+  eps_a   = 1e-30     # keep ln() arg > 0
+  n_floor = 1e-40     # keep n_i > 0 (tiny floor)
+
+  # Element totals (H, O) in the feed
+  E_H0 = 2.0*n0_H2 + 2.0*n0_H2O
+  E_O0 = 2.0*n0_O2 + 1.0*n0_H2O
+
+  # Clamp bounds for exp() stability
+  z_lo  = -80.0
+  z_hi  =  50.0
+  zT_lo =  6.0
+  zT_hi =  9.0
+
+guess:
+  # ----------------------------
+  # Physically consistent initial guess (near complete combustion, O2-rich)
+  # Reaction: H2 + 0.5 O2 -> H2O
+  # With n0_H2=1, n0_O2=2 => H2O ~ 1, leftover O2 ~ 1.5, H2 ~ tiny
+  # ----------------------------
+  z_T    = 7.8240460109     # ln(2500 K)
+
+  z_H2O  = 0.0              # ln(1.0)
+  z_O2   = 0.4054651081     # ln(1.5)
+  z_H2   = -23.0258509299   # ln(1e-10)
+
+  # multipliers (dimensionless)
+  lam_H  = 12.0
+  lam_O  = 15.0
+
+  # seeds for derived vars
+  T_2   = 2500.0
+  n_H2  = 1e-10
+  n_O2  = 1.5
+  n_H2O = 1.0
+  n_tot = 2.5000000001
+  y_H2  = 1e-10
+  y_O2  = 0.6
+  y_H2O = 0.4
+  phi_H2  = -30.0
+  phi_O2  = -30.0
+  phi_H2O = -45.0
+  H_1 = 0.0
+  H_2 = 0.0
+
+equations:
+  # Keep EVERY equation on ONE line.
+
+  # Temperature
+  T_2 = exp(clamp(z_T, zT_lo, zT_hi))
+
+  # Mole numbers (positive by construction)
+  n_H2  = exp(clamp(z_H2,  z_lo, z_hi)) + n_floor
+  n_O2  = exp(clamp(z_O2,  z_lo, z_hi)) + n_floor
+  n_H2O = exp(clamp(z_H2O, z_lo, z_hi)) + n_floor
+
+  # Total moles and mole fractions
+  n_tot = n_H2 + n_O2 + n_H2O
+  y_H2  = n_H2  / n_tot
+  y_O2  = n_O2  / n_tot
+  y_H2O = n_H2O / n_tot
+
+  # Dimensionless chemical potentials (ideal-gas mixture): phi_i = g0/(R*T) + ln(y_i*P/P_ref)
+  # IMPORTANT: ln() uses exp(clamp(z))/sumexp directly so it cannot go negative even if y_i drifts mid-iteration.
+  phi_H2  = (CTPropsSI("GMOLAR","T",T_2,"P",P_ref,"gri30.yaml|X=H2:1") /(R_u*T_2)) + ln( ((exp(clamp(z_H2, z_lo, z_hi)) + n_floor) / ((exp(clamp(z_H2, z_lo, z_hi)) + n_floor) + (exp(clamp(z_O2, z_lo, z_hi)) + n_floor) + (exp(clamp(z_H2O, z_lo, z_hi)) + n_floor))) * P / P_ref + eps_a )
+  phi_O2  = (CTPropsSI("GMOLAR","T",T_2,"P",P_ref,"gri30.yaml|X=O2:1") /(R_u*T_2)) + ln( ((exp(clamp(z_O2, z_lo, z_hi)) + n_floor) / ((exp(clamp(z_H2, z_lo, z_hi)) + n_floor) + (exp(clamp(z_O2, z_lo, z_hi)) + n_floor) + (exp(clamp(z_H2O, z_lo, z_hi)) + n_floor))) * P / P_ref + eps_a )
+  phi_H2O = (CTPropsSI("GMOLAR","T",T_2,"P",P_ref,"gri30.yaml|X=H2O:1")/(R_u*T_2)) + ln( ((exp(clamp(z_H2O,z_lo, z_hi)) + n_floor) / ((exp(clamp(z_H2, z_lo, z_hi)) + n_floor) + (exp(clamp(z_O2, z_lo, z_hi)) + n_floor) + (exp(clamp(z_H2O, z_lo, z_hi)) + n_floor))) * P / P_ref + eps_a )
+
+  # Element balances (H, O)
+  (2.0)*n_H2 + (2.0)*n_H2O = E_H0
+  (2.0)*n_O2 + (1.0)*n_H2O = E_O0
+
+  # Lagrange stationarity (dimensionless multipliers): phi_i + lam_H*eH + lam_O*eO = 0
+  phi_H2  + (2.0)*lam_H + (0.0)*lam_O = 0.0
+  phi_O2  + (0.0)*lam_H + (2.0)*lam_O = 0.0
+  phi_H2O + (2.0)*lam_H + (1.0)*lam_O = 0.0
+
+  # Energy balance (adiabatic): define H_1 and H_2 explicitly, then enforce equality.
+  # NOTE: DO NOT write a raw "... = ..." equation where the first '=' could occur inside a quoted CT string like "X=H2:1".
+  H_1 = n0_H2*CTPropsSI("HMOLAR","T",T_1,"P",P_ref,"gri30.yaml|X=H2:1") + n0_O2*CTPropsSI("HMOLAR","T",T_1,"P",P_ref,"gri30.yaml|X=O2:1") + n0_H2O*CTPropsSI("HMOLAR","T",T_1,"P",P_ref,"gri30.yaml|X=H2O:1")
+  H_2 = n_H2*CTPropsSI("HMOLAR","T",T_2,"P",P_ref,"gri30.yaml|X=H2:1") + n_O2*CTPropsSI("HMOLAR","T",T_2,"P",P_ref,"gri30.yaml|X=O2:1") + n_H2O*CTPropsSI("HMOLAR","T",T_2,"P",P_ref,"gri30.yaml|X=H2O:1")
+  H_1 = H_2
+
+report:
+  T_1, P_bar, P, P_ref
+  n0_H2, n0_O2, n0_H2O
+  E_H0, E_O0
+  T_2
+  n_H2, n_O2, n_H2O, n_tot
+  y_H2, y_O2, y_H2O
+  lam_H, lam_O
+  phi_H2, phi_O2, phi_H2O
+  H_1, H_2
+
+solve:
+  backend = scipy
+  method = krylov
+  tol = 1e-10
+  max_iter = 1500
+  max_restarts = 6
+  thermo_penalty = 1e9
+  warm_start = 1
+  warm_start_passes = 10
+  warm_start_mode = override
+  auto_guess = 1

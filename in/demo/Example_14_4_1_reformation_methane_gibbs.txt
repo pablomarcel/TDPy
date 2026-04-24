@@ -1,0 +1,180 @@
+title: Klein & Nellis Example 14.4-1 (Reformation of Methane revisited) — Direct Gibbs Minimization (KKT), CTPropsSI
+
+given:
+  # ----------------------------
+  # Problem inputs (book basis: kmol, SI)
+  # ----------------------------
+  n0_CH4 = 2.0          # kmol
+  n0_H2O = 3.0          # kmol
+  n0_CO2 = 1.0          # kmol
+  T      = 1100.0       # K
+
+  P_bar  = 1.0          # bar
+  P      = P_bar * 1e5  # Pa  (1 bar = 1e5 Pa)
+
+  # Reference pressure for standard-state Gibbs energies
+  P_ref  = 101325.0     # Pa  (1 atm)
+
+  # Universal gas constant in J/(kmol*K)
+  R_u    = 8314.462618
+
+  # Small epsilon to keep ln() arguments strictly positive (numerical robustness)
+  eps_a  = 1e-30
+
+guess:
+  # ----------------------------
+  # Robust initial guess strategy
+  # ----------------------------
+  # We enforce n_i > 0 by parameterizing:
+  #    n_i = exp(z_i)
+  # so we guess z_i = ln(n_i_guess).
+  #
+  # Chosen n_i_guess approximately satisfies element balances at start:
+  #   C: n_CH4 + n_CO + n_CO2  = 3
+  #   H: 4 n_CH4 + 2 n_H2O + 2 n_H2 = 14
+  #   O: n_H2O + n_CO + 2 n_CO2 = 5
+  #
+  z_CH4 = -1.0498221244986778   # ln(0.35)
+  z_H2O =  0.5306282510621704   # ln(1.7)
+  z_CO  =  0.6931471805599453   # ln(2.0)
+  z_H2  =  1.5260563034950492   # ln(4.6)
+  z_CO2 = -0.4307829160924542   # ln(0.65)
+
+  # Also seed n_i, y_i, and potentials to help SciPy converge quickly
+  n_CH4 = 0.35
+  n_H2O = 1.70
+  n_CO  = 2.00
+  n_H2  = 4.60
+  n_CO2 = 0.65
+  n_tot = 9.30
+
+  y_CH4 = 0.03763440860215054
+  y_H2O = 0.1827956989247312
+  y_CO  = 0.21505376344086022
+  y_H2  = 0.4946236559139785
+  y_CO2 = 0.06989247311827956
+
+  # Dimensionless potentials: phi_i = mu_i / (R_u*T)
+  # Rough magnitudes based on g°/(R_u*T) plus ln(activity)
+  phi_CH4 = -37.1
+  phi_H2O = -53.3
+  phi_CO  = -39.5
+  phi_H2  = -18.4
+  phi_CO2 = -74.4
+
+  # Dimensionless element multipliers (Lagrange multipliers / (R_u*T))
+  l_C = -20.0
+  l_H = -10.0
+  l_O = -20.0
+
+  # Reaction extents (derived later; just a seed)
+  e1 = 1.65
+  e2 = 0.35
+
+  # Total Gibbs free energy (derived later; just a seed)
+  Ghat = -315.6
+  G    = -2.9e9
+
+equations:
+  # ----------------------------
+  # Decision variables: positive mole numbers via exp() parameterization
+  # ----------------------------
+  n_CH4 = exp(z_CH4)
+  n_H2O = exp(z_H2O)
+  n_CO  = exp(z_CO)
+  n_H2  = exp(z_H2)
+  n_CO2 = exp(z_CO2)
+
+  # Total moles and mole fractions
+  n_tot = n_CH4 + n_H2O + n_CO + n_H2 + n_CO2
+
+  y_CH4 = n_CH4 / n_tot
+  y_H2O = n_H2O / n_tot
+  y_CO  = n_CO  / n_tot
+  y_H2  = n_H2  / n_tot
+  y_CO2 = n_CO2 / n_tot
+
+  # ----------------------------
+  # Element balances (C, H, O)  — unrolled (no loops / no sums)
+  # Totals from initial feed:
+  #   E_C0 = 1*n0_CH4 + 1*n0_CO2
+  #   E_H0 = 4*n0_CH4 + 2*n0_H2O
+  #   E_O0 = 1*n0_H2O + 2*n0_CO2
+  # ----------------------------
+  (1.0)*n_CH4 + (1.0)*n_CO + (1.0)*n_CO2 = (1.0)*n0_CH4 + (1.0)*n0_CO2
+  (4.0)*n_CH4 + (2.0)*n_H2O + (2.0)*n_H2 = (4.0)*n0_CH4 + (2.0)*n0_H2O
+  (1.0)*n_H2O + (1.0)*n_CO + (2.0)*n_CO2 = (1.0)*n0_H2O + (2.0)*n0_CO2
+
+  # ----------------------------
+  # Chemical potentials (dimensionless form)
+  #
+  #   mu_i = gbar0_i(T,P_ref) + R_u*T*ln( y_i * P/P_ref )
+  #   phi_i = mu_i / (R_u*T) = gbar0_i/(R_u*T) + ln( y_i*P/P_ref )
+  #
+  # We add eps_a so ln() never sees 0.
+  # ----------------------------
+  phi_CH4 = (CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=CH4:1")/(R_u*T)) + ln(y_CH4 * P / P_ref + eps_a)
+  phi_H2O = (CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=H2O:1")/(R_u*T)) + ln(y_H2O * P / P_ref + eps_a)
+  phi_CO  = (CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=CO:1") /(R_u*T)) + ln(y_CO  * P / P_ref + eps_a)
+  phi_H2  = (CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=H2:1") /(R_u*T)) + ln(y_H2  * P / P_ref + eps_a)
+  phi_CO2 = (CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=CO2:1")/(R_u*T)) + ln(y_CO2 * P / P_ref + eps_a)
+
+  # ----------------------------
+  # KKT stationarity conditions (Gibbs minimization with equality constraints)
+  #
+  # At the minimum:
+  #   phi_i = l_C * e_iC + l_H * e_iH + l_O * e_iO
+  #
+  # Stoichiometric element counts (CH4, H2O, CO, H2, CO2):
+  #   e_C: [1,0,1,0,1]
+  #   e_H: [4,2,0,2,0]
+  #   e_O: [0,1,1,0,2]
+  # ----------------------------
+  phi_CH4 = (1.0)*l_C + (4.0)*l_H + (0.0)*l_O
+  phi_H2O = (0.0)*l_C + (2.0)*l_H + (1.0)*l_O
+  phi_CO  = (1.0)*l_C + (0.0)*l_H + (1.0)*l_O
+  phi_H2  = (0.0)*l_C + (2.0)*l_H + (0.0)*l_O
+  phi_CO2 = (1.0)*l_C + (0.0)*l_H + (2.0)*l_O
+
+  # ----------------------------
+  # Optional reaction extents (for comparison to Example 14.3-1)
+  # Reaction 1: CH4 + H2O ⇌ CO + 3 H2  -> e1 = n0_CH4 - n_CH4
+  # Reaction 2: CO2 + H2 ⇌ CO + H2O    -> e2 = n0_CO2 - n_CO2
+  # ----------------------------
+  e1 = n0_CH4 - n_CH4
+  e2 = n0_CO2 - n_CO2
+
+  # ----------------------------
+  # Total Gibbs free energy
+  #   G = sum(n_i * mu_i) = (R_u*T) * sum(n_i * phi_i)
+  # ----------------------------
+  Ghat = n_CH4*phi_CH4 + n_H2O*phi_H2O + n_CO*phi_CO + n_H2*phi_H2 + n_CO2*phi_CO2
+  G    = Ghat * R_u * T
+
+report:
+  # Inputs
+  T, P_bar, P, P_ref
+
+  # Mole amounts and fractions
+  n_CH4, n_H2O, n_CO, n_H2, n_CO2, n_tot
+  y_CH4, y_H2O, y_CO, y_H2, y_CO2
+
+  # Dimensionless potentials and element multipliers
+  phi_CH4, phi_H2O, phi_CO, phi_H2, phi_CO2
+  l_C, l_H, l_O
+
+  # Extents and objective
+  e1, e2
+  Ghat, G
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 250
+  max_restarts = 2
+  thermo_penalty = 1e9
+  warm_start = 1
+  warm_start_passes = 6
+  warm_start_mode = override
+  auto_guess = 1

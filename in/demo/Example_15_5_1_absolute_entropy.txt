@@ -1,0 +1,55 @@
+title: Klein & Nellis Example 15.5-1 — Absolute Entropy (Sackur–Tetrode) — Monatomic ideal gas
+
+given:
+  # -------------------- Inputs --------------------
+  # Use CoolProp fluid names (e.g., Helium, Argon)
+  fluid = Helium          # [-]
+  T     = 300.0           # K
+  P_atm = 1.0             # atm
+
+  # -------------------- Constants --------------------
+  atm_to_Pa = 101325.0    # Pa/atm
+  R_u  = 8.31446261815324 # J/mol-K  universal gas constant
+  NA   = 6.02214076e23    # 1/mol    Avogadro constant
+  kB   = 1.380649e-23     # J/K      Boltzmann constant
+  h    = 6.62607015e-34   # J*s      Planck constant
+
+  # Pressure in Pa (Sackur–Tetrode expects SI)
+  P = P_atm * atm_to_Pa   # Pa
+
+guess:
+  # Helpful if you solve with a nonlinear backend (otherwise ignored)
+  s_bar_ST = 125.0        # J/mol-K
+
+equations:
+  # Molar mass from CoolProp (kg/mol)
+  MW = PropsSI("M","T",T,"P",P,fluid)
+
+  # Mass of one particle (kg/particle)
+  m = MW / NA
+
+  # Sackur–Tetrode argument (dimensionless)
+  arg = (kB*T/P) * (2*pi*m*kB*T/(h^2))^(3/2)
+
+  # Absolute molar entropy from statistical mechanics (J/mol-K)
+  s_bar_ST = R_u * ( ln(arg) + 5/2 )
+
+  # "Truth" check: CoolProp molar entropy (J/mol-K)
+  s_bar_CP = PropsSI("SMOLAR","T",T,"P",P,fluid)
+
+  # Differences
+  ds      = s_bar_ST - s_bar_CP
+  rel_pct = 100*ds/s_bar_CP
+
+report:
+  fluid
+  T, P
+  MW, m
+  s_bar_ST, s_bar_CP
+  ds, rel_pct
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 40

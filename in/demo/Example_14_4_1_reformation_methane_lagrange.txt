@@ -1,0 +1,145 @@
+title: Klein & Nellis Example 14.4-2 (Reformation of Methane revisited again) — Lagrange Multipliers (undetermined coeffs), CTPropsSI
+
+given:
+  # ----------------------------
+  # Problem inputs (book basis: kmol, SI)
+  # ----------------------------
+  n0_CH4 = 2.0          # kmol
+  n0_H2O = 3.0          # kmol
+  n0_CO2 = 1.0          # kmol
+  T      = 1100.0       # K
+
+  P_bar  = 1.0          # bar
+  P      = P_bar * 1e5  # Pa  (1 bar = 1e5 Pa)
+
+  # Reference pressure for standard-state Gibbs energies
+  P_ref  = 101325.0     # Pa  (1 atm)
+
+  # Universal gas constant in J/(kmol*K)
+  R_u    = 8314.462618
+
+  # Epsilon to keep ln() arguments strictly positive (avoid ln(0) underflow)
+  eps_a  = 1e-300
+
+  # Element totals in the feed (unrolled)
+  E_C0 = (1.0)*n0_CH4 + (1.0)*n0_CO2
+  E_H0 = (4.0)*n0_CH4 + (2.0)*n0_H2O
+  E_O0 = (1.0)*n0_H2O + (2.0)*n0_CO2
+
+guess:
+  # ----------------------------
+  # Robust guesses
+  # ----------------------------
+  # Enforce positivity with n_i = exp(z_i). These z guesses are close to the
+  # equilibrium solution at T=1100 K, P=1 bar (from Example 14.4-1 result).
+  z_CH4 = -4.6884163256   # ln(0.009201)
+  z_H2O =  0.3444005929   # ln(1.41114)
+  z_CO  =  0.8724397060   # ln(2.39274)
+  z_H2  =  1.7174765032   # ln(5.57045)
+  z_CO2 = -0.5140684929   # ln(0.59806)
+
+  # Lagrange multipliers (dimensionless): lam_j = lambda_j/(R_u*T)
+  # Stationarity written as: phi_i + sum(lam_j * e_ij) = 0
+  lam_C =  4.1452603211
+  lam_H =  9.1720970695
+  lam_O = 35.2366554560
+
+  # Seed some derived values (optional; warm-start will overwrite)
+  n_tot = 10.0
+  y_H2  = 0.558
+
+equations:
+  # ----------------------------
+  # Positive mole numbers via exp() parameterization
+  # (n_i variables exist for reporting only; all physics uses exp(z_i) directly)
+  # ----------------------------
+  n_CH4 = exp(z_CH4)
+  n_H2O = exp(z_H2O)
+  n_CO  = exp(z_CO)
+  n_H2  = exp(z_H2)
+  n_CO2 = exp(z_CO2)
+
+  # Total moles (use exp(z) directly for robustness)
+  n_tot = exp(z_CH4) + exp(z_H2O) + exp(z_CO) + exp(z_H2) + exp(z_CO2)
+
+  # Mole fractions (use exp(z) directly so y_i is always > 0)
+  y_CH4 = exp(z_CH4) / n_tot
+  y_H2O = exp(z_H2O) / n_tot
+  y_CO  = exp(z_CO)  / n_tot
+  y_H2  = exp(z_H2)  / n_tot
+  y_CO2 = exp(z_CO2) / n_tot
+
+  # ----------------------------
+  # Chemical potentials (dimensionless form)
+  #
+  # mu_i = gbar0_i(T,P_ref) + R_u*T*ln( y_i*P/P_ref )
+  # phi_i = mu_i/(R_u*T) = gbar0_i/(R_u*T) + ln(y_i*P/P_ref)
+  # ----------------------------
+  phi_CH4 = (CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=CH4:1")/(R_u*T)) + ln(y_CH4 * P / P_ref + eps_a)
+  phi_H2O = (CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=H2O:1")/(R_u*T)) + ln(y_H2O * P / P_ref + eps_a)
+  phi_CO  = (CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=CO:1") /(R_u*T)) + ln(y_CO  * P / P_ref + eps_a)
+  phi_H2  = (CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=H2:1") /(R_u*T)) + ln(y_H2  * P / P_ref + eps_a)
+  phi_CO2 = (CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=CO2:1")/(R_u*T)) + ln(y_CO2 * P / P_ref + eps_a)
+
+  # ----------------------------
+  # Lagrange method of undetermined multipliers
+  #
+  # Element balances (unrolled), using exp(z) directly:
+  #   C: 1*CH4 + 1*CO + 1*CO2 = E_C0
+  #   H: 4*CH4 + 2*H2O + 2*H2 = E_H0
+  #   O: 1*H2O + 1*CO + 2*CO2 = E_O0
+  # ----------------------------
+  (1.0)*exp(z_CH4) + (1.0)*exp(z_CO) + (1.0)*exp(z_CO2) = E_C0
+  (4.0)*exp(z_CH4) + (2.0)*exp(z_H2O) + (2.0)*exp(z_H2) = E_H0
+  (1.0)*exp(z_H2O) + (1.0)*exp(z_CO) + (2.0)*exp(z_CO2) = E_O0
+
+  # Stationarity conditions (dimensionless):
+  #   mu_i + sum(lambda_j * e_ij) = 0
+  # Divide by (R_u*T) -> phi_i + sum(lam_j * e_ij) = 0
+  #
+  # Element counts (CH4, H2O, CO, H2, CO2):
+  #   e_C: [1,0,1,0,1]
+  #   e_H: [4,2,0,2,0]
+  #   e_O: [0,1,1,0,2]
+  phi_CH4 + (1.0)*lam_C + (4.0)*lam_H + (0.0)*lam_O = 0.0
+  phi_H2O + (0.0)*lam_C + (2.0)*lam_H + (1.0)*lam_O = 0.0
+  phi_CO  + (1.0)*lam_C + (0.0)*lam_H + (1.0)*lam_O = 0.0
+  phi_H2  + (0.0)*lam_C + (2.0)*lam_H + (0.0)*lam_O = 0.0
+  phi_CO2 + (1.0)*lam_C + (0.0)*lam_H + (2.0)*lam_O = 0.0
+
+  # ----------------------------
+  # Optional: reaction extents + Gibbs total (nice for comparing to 14.3-1 / 14.4-1)
+  # ----------------------------
+  e1 = n0_CH4 - exp(z_CH4)   # CH4 + H2O ⇌ CO + 3 H2
+  e2 = n0_CO2 - exp(z_CO2)   # CO2 + H2 ⇌ CO + H2O
+
+  Ghat = exp(z_CH4)*phi_CH4 + exp(z_H2O)*phi_H2O + exp(z_CO)*phi_CO + exp(z_H2)*phi_H2 + exp(z_CO2)*phi_CO2
+  G    = Ghat * R_u * T
+
+report:
+  # Inputs
+  T, P_bar, P, P_ref
+
+  # Mole amounts and fractions
+  n_CH4, n_H2O, n_CO, n_H2, n_CO2, n_tot
+  y_CH4, y_H2O, y_CO, y_H2, y_CO2
+
+  # Dimensionless potentials and multipliers
+  phi_CH4, phi_H2O, phi_CO, phi_H2, phi_CO2
+  lam_C, lam_H, lam_O
+
+  # Extents and objective
+  e1, e2
+  Ghat, G
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 300
+  max_restarts = 2
+  thermo_penalty = 1e9
+  warm_start = 1
+  warm_start_passes = 6
+  warm_start_mode = override
+  auto_guess = 1

@@ -1,0 +1,152 @@
+title: Klein & Nellis Example 14.3-2 — Ammonia Synthesis (Mass Action, product unrolled; fugacity via AbstractState)
+
+given:
+  # Conditions
+  P     = 30397500      # Pa  (300 atm)
+  T     = 773.15        # K   (500 C)
+  P_ref = 101325        # Pa  (1 atm reference)
+
+  # Universal gas constant (molar)
+  R_u   = 8.31446261815324   # J/(mol*K)
+
+  # Stoichiometry (scaled so nu_NH3 = +1)
+  nu_N2  = -0.5
+  nu_H2  = -1.5
+  nu_NH3 =  1.0
+
+  # Initial moles (basis in kmol; basis cancels in y_i)
+  n0_N2  = 0.5          # kmol
+  n0_H2  = 1.5          # kmol
+  n0_NH3 = 0.0          # kmol
+
+  # Extent bounds (with the chosen basis, xi is in (0, 1) kmol)
+  xi_max = 1.0          # kmol
+
+  # Mapping scale for the bounded extent (use exp(-alpha*z) so a modest negative z => tiny xi)
+  alpha = 15.0
+
+  # Small epsilon to avoid 0 in denominators (keep << expected y_NH3 ~ 1e-7)
+  EPS = 1e-12
+
+  # Equilibrium residual target (constraint)
+  eqK = 0.0
+
+# -----------------------------------------------------------------------------
+# Guesses: keep physically sane guesses to avoid:
+#   - negative mole numbers
+#   - bad initial iterates that cause pow()/log() domain errors
+#
+# NOTE:
+#   - Do NOT use variable name 'e' (reserved as Euler's number in TDPy).
+#   - We bias the initial extent to be *tiny* because K is extremely small at 500 C.
+# -----------------------------------------------------------------------------
+guess:
+  # Reaction-coordinate helper (z): choose negative so exp(-alpha*z) is large -> xi is tiny
+  z = -0.90
+
+  # Extent (kmol) and composition (roughly “no conversion”)
+  xi     = 1.0e-6
+  n_N2   = 0.5
+  n_H2   = 1.5
+  n_NH3  = 1.0e-6
+  n_tot  = 2.0
+
+  y_N2   = 0.25
+  y_H2   = 0.75
+  y_NH3  = 1.0e-6
+  y_sum  = 1.0
+
+  # Fugacity coefficients near unity (reasonable at high T)
+  phi_N2  = 1.10
+  phi_H2  = 1.05
+  phi_NH3 = 0.95
+
+  # Equilibrium constant ballpark (from previous successful run)
+  lnK    = -19.0
+  K      = 5.0e-9
+  K_calc = 5.0e-9
+
+equations:
+  # --- Reaction coordinate (bounded) ---
+  # IMPORTANT: do NOT name this variable 'e' because TDPy reserves 'e' as Euler's constant.
+  #
+  # This mapping keeps xi in (0, xi_max) for any real z, and avoids exp() overflow in typical ranges:
+  #   - if z ~ -1, then exp(-alpha*z)=exp(alpha) ~ 3e6 -> xi ~ 3e-7
+  #   - if z ~ -0.9, xi is O(1e-6) (near the solution for this case)
+  xi = xi_max/(1 + exp(-alpha*z))
+
+  # --- Mole balances ---
+  n_N2  = n0_N2  + nu_N2*xi
+  n_H2  = n0_H2  + nu_H2*xi
+  n_NH3 = n0_NH3 + nu_NH3*xi
+
+  n_tot = n_N2 + n_H2 + n_NH3
+
+  y_N2  = n_N2/n_tot
+  y_H2  = n_H2/n_tot
+  y_NH3 = n_NH3/n_tot
+
+  # Diagnostic (should be 1.0)
+  y_sum = y_N2 + y_H2 + y_NH3
+
+  # --- Standard-state Gibbs free energy (approx via CoolProp at P_ref) ---
+  # g0_i = h_i(T,P_ref) - T*s_i(T,P_ref)
+  h_N2  = PropsSI("Hmolar","T",T,"P",P_ref,"HEOS::Nitrogen")
+  s_N2  = PropsSI("Smolar","T",T,"P",P_ref,"HEOS::Nitrogen")
+  g0_N2 = h_N2 - T*s_N2
+
+  h_H2  = PropsSI("Hmolar","T",T,"P",P_ref,"HEOS::Hydrogen")
+  s_H2  = PropsSI("Smolar","T",T,"P",P_ref,"HEOS::Hydrogen")
+  g0_H2 = h_H2 - T*s_H2
+
+  h_NH3  = PropsSI("Hmolar","T",T,"P",P_ref,"HEOS::Ammonia")
+  s_NH3  = PropsSI("Smolar","T",T,"P",P_ref,"HEOS::Ammonia")
+  g0_NH3 = h_NH3 - T*s_NH3
+
+  dG0 = nu_N2*g0_N2 + nu_H2*g0_H2 + nu_NH3*g0_NH3
+
+  # ln(K) from standard-state ΔG°
+  lnK = -dG0/(R_u*T)
+  K   = exp(lnK)
+
+  # --- Fugacity (pure-fluid fugacity at T,P via AbstractState) ---
+  # EES example uses f_i (pure fluid at T,P) and assumes mixture fugacity ≈ y_i * f_i.
+  phi_N2 = FugacityCoeffSI("T",T,"P",P,"HEOS::Nitrogen")
+  f_N2   = FugacitySI("T",T,"P",P,"HEOS::Nitrogen")
+
+  phi_H2 = FugacityCoeffSI("T",T,"P",P,"HEOS::Hydrogen")
+  f_H2   = FugacitySI("T",T,"P",P,"HEOS::Hydrogen")
+
+  phi_NH3 = FugacityCoeffSI("T",T,"P",P,"HEOS::Ammonia")
+  f_NH3   = FugacitySI("T",T,"P",P,"HEOS::Ammonia")
+
+  # --- Mass action without ln() (avoids ln-domain issues) ---
+  # Define dimensionless activity-like terms:
+  a_N2  = (y_N2  + EPS)*f_N2 /P_ref
+  a_H2  = (y_H2  + EPS)*f_H2 /P_ref
+  a_NH3 = (y_NH3 + EPS)*f_NH3/P_ref
+
+  # Unrolled Product:  K_calc = Π (a_i ^ nu_i)
+  # (base a_i should be positive; EPS + bounded xi help ensure this)
+  K_calc = (a_N2^nu_N2) * (a_H2^nu_H2) * (a_NH3^nu_NH3)
+
+  # Enforce equilibrium: K_calc == K (scaled residual for better conditioning)
+  eqK = K_calc/K - 1
+
+report:
+  P, T, P_ref
+  xi, z
+  n_N2, n_H2, n_NH3, n_tot
+  y_N2, y_H2, y_NH3, y_sum
+  dG0, lnK, K
+  phi_N2, phi_H2, phi_NH3
+  f_N2, f_H2, f_NH3
+  a_N2, a_H2, a_NH3
+  K_calc
+  eqK
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 200

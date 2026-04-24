@@ -1,0 +1,109 @@
+title: Klein & Nellis Section 14.5 — C(gr)+H2O⇌CO+H2 @ 950 K, 1 atm — robust interior/boundary via smooth-min extent (CTPropsSI) — v8
+
+given:
+  T     = 950.0
+  P     = 101325.0
+  P_ref = 101325.0
+
+  # Feed (kmol) — set n0_C = 10 for Fig 14-2; set n0_C = 1 for Fig 14-3
+  n0_C   = 10.0
+  n0_H2O = 2.0
+  n0_CO  = 0.0
+  n0_H2  = 0.0
+
+  R_u = 8314.462618
+
+  eps_a   = 1e-30
+  n_floor = 1e-40
+  eps_m   = 1e-24   # smooth-min regularizer
+
+  solid_src   = "graphite.yaml|X=C(gr):1"
+  gas_src_H2O = "gri30.yaml|X=H2O:1"
+  gas_src_CO  = "gri30.yaml|X=CO:1"
+  gas_src_H2  = "gri30.yaml|X=H2:1"
+
+guess:
+  # seeds only
+  gC0 = 0.0
+  gH2O0 = 0.0
+  gCO0 = 0.0
+  gH20 = 0.0
+  lnK = 0.0
+  K = 1.0
+  Kp = 1.0
+  x_star = 1.4
+  x_lim = 2.0
+  x = 1.4
+
+  n_C = 8.6
+  n_H2O = 0.6
+  n_CO = 1.4
+  n_H2 = 1.4
+  n_gas = 3.4
+  y_H2O = 0.18
+  y_CO = 0.41
+  y_H2 = 0.41
+  Q = 1.0
+  lnQ = 0.0
+  lnQ_err = 0.0
+
+equations:
+  # --- standard-state Gibbs at (T, P_ref) ---
+  gC0   = CTPropsSI("GMOLAR","T",T,"P",P_ref, solid_src)
+  gH2O0 = CTPropsSI("GMOLAR","T",T,"P",P_ref, gas_src_H2O)
+  gCO0  = CTPropsSI("GMOLAR","T",T,"P",P_ref, gas_src_CO)
+  gH20  = CTPropsSI("GMOLAR","T",T,"P",P_ref, gas_src_H2)
+
+  # lnK = -Δg0/(R*T) for reaction: C + H2O -> CO + H2
+  lnK = - (gCO0 + gH20 - gH2O0 - gC0) / (R_u * T)
+  K  = exp(lnK)
+  Kp = K * (P_ref / P)
+
+  # unconstrained equilibrium extent (from Q=Kp with this feed)
+  x_star = n0_H2O * sqrt( Kp / (1.0 + Kp) )
+
+  # physical extent limit: x <= min(n0_C, n0_H2O)  (smooth-min)
+  x_lim = 0.5*( (n0_C + n0_H2O) - sqrt( (n0_C - n0_H2O)*(n0_C - n0_H2O) + eps_m ) )
+
+  # actual extent: x = min(x_star, x_lim)  (smooth-min)
+  x = 0.5*( (x_star + x_lim) - sqrt( (x_star - x_lim)*(x_star - x_lim) + eps_m ) )
+
+  # stoichiometry
+  n_C   = (n0_C   - x) + n_floor
+  n_H2O = (n0_H2O - x) + n_floor
+  n_CO  = (n0_CO  + x) + n_floor
+  n_H2  = (n0_H2  + x) + n_floor
+
+  # gas totals + mole fractions
+  n_gas = n_H2O + n_CO + n_H2
+  y_H2O = n_H2O / n_gas
+  y_CO  = n_CO  / n_gas
+  y_H2  = n_H2  / n_gas
+
+  # reaction quotient (ideal gas activities; solid activity=1)
+  Q   = (y_CO * y_H2 / (y_H2O + eps_a)) * (P / P_ref)
+  lnQ = ln(Q + eps_a)
+
+  # diagnostic: should be ~0 for the 10-kmol C case, negative for the 1-kmol C constrained case
+  lnQ_err = lnQ - lnK
+
+report:
+  T, P, P_ref
+  n0_C, n0_H2O, n0_CO, n0_H2
+  lnK, K, Kp
+  x_star, x_lim, x
+  n_C, n_H2O, n_CO, n_H2
+  n_gas, y_H2O, y_CO, y_H2
+  Q, lnQ, lnQ_err
+
+solve:
+  backend = scipy
+  method  = hybr
+  tol = 1e-12
+  max_iter = 300
+  max_restarts = 2
+  thermo_penalty = 1e9
+  warm_start = 1
+  warm_start_passes = 6
+  warm_start_mode = override
+  auto_guess = 1

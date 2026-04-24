@@ -1,0 +1,117 @@
+title: Klein & Nellis Example 14.2-1 — Maximize y_H2 with native optimizer (SciPy/SLSQP)
+
+given:
+  # ---------------------------------------------------------------------------
+  # Two simultaneous reactions during methane reforming (Klein & Nellis, Ex 14.2-1)
+  #
+  # Reaction 1:  CH4 + H2O ⇌ CO + 3 H2
+  # Reaction 2:  H2 + CO2 ⇌ H2O + CO
+  #
+  # Decision variables are the reaction coordinates: eps1, eps2  (kmol)
+  # Goal: maximize mole fraction of hydrogen: y_H2
+  #
+  # Known optimum (book): y_H2 = 0.7 at eps1 = 2 kmol, eps2 = -1 kmol
+  # ---------------------------------------------------------------------------
+
+  # Initial amounts (kmol)
+  n0_CH4 = 2.0
+  n0_H2O = 3.0
+  n0_CO  = 0.0
+  n0_H2  = 0.0
+  n0_CO2 = 1.0
+
+  # Stoichiometric coefficients nu_{species,reaction}
+  # Reaction 1
+  nu_CH4_1 = -1.0
+  nu_H2O_1 = -1.0
+  nu_CO_1  =  1.0
+  nu_H2_1  =  3.0
+  nu_CO2_1 =  0.0
+
+  # Reaction 2
+  nu_CH4_2 =  0.0
+  nu_H2O_2 =  1.0
+  nu_CO_2  =  1.0
+  nu_H2_2  = -1.0
+  nu_CO2_2 = -1.0
+
+  EPS = 1e-12
+
+# --- Optimizer intent ---
+design_vars:
+  eps1, eps2
+
+# Bounds (EES-style): eps bounds can be wide; physical feasibility is enforced by y_i bounds + equations.
+# NOTE: Your optimizer backend uses BOUNDS (not inequality constraints), so we bound mole fractions.
+bounds:
+  # Reaction coordinates (kmol)
+  eps1: [-10, 10]
+  eps2: [-10, 10]
+
+  # Total moles (kmol) must be positive
+  n_tot: [1e-9, 1e9]
+
+  # Mole fractions must lie in [0,1]
+  y_CH4: [0, 1]
+  y_H2O: [0, 1]
+  y_CO:  [0, 1]
+  y_H2:  [0, 1]
+  y_CO2: [0, 1]
+
+# Objective (native min/max tooling)
+objective:
+  max y_H2
+
+equations:
+  # ---------------------------------------------------------------------------
+  # Mole balances: n_i = n0_i + nu_{i,1}*eps1 + nu_{i,2}*eps2
+  # ---------------------------------------------------------------------------
+  n_CH4 = n0_CH4 + nu_CH4_1*eps1 + nu_CH4_2*eps2
+  n_H2O = n0_H2O + nu_H2O_1*eps1 + nu_H2O_2*eps2
+  n_CO  = n0_CO  + nu_CO_1*eps1  + nu_CO_2*eps2
+  n_H2  = n0_H2  + nu_H2_1*eps1  + nu_H2_2*eps2
+  n_CO2 = n0_CO2 + nu_CO2_1*eps1 + nu_CO2_2*eps2
+
+  n_tot = n_CH4 + n_H2O + n_CO + n_H2 + n_CO2
+
+  # Mole fractions
+  y_CH4 = n_CH4/(n_tot + EPS)
+  y_H2O = n_H2O/(n_tot + EPS)
+  y_CO  = n_CO /(n_tot + EPS)
+  y_H2  = n_H2 /(n_tot + EPS)
+  y_CO2 = n_CO2/(n_tot + EPS)
+
+  # Diagnostic (should be 1)
+  y_sum = y_CH4 + y_H2O + y_CO + y_H2 + y_CO2
+  y_sum = 1
+
+guesses:
+  # Feasible-ish starting point (all n_i >= 0, y_i in [0,1])
+  ? eps1 = 1.0
+  ? eps2 = 0.0
+
+  ? n_CH4 = 1.0
+  ? n_H2O = 2.0
+  ? n_CO  = 1.0
+  ? n_H2  = 3.0
+  ? n_CO2 = 1.0
+  ? n_tot = 8.0
+
+  ? y_CH4 = 0.125
+  ? y_H2O = 0.25
+  ? y_CO  = 0.125
+  ? y_H2  = 0.375
+  ? y_CO2 = 0.125
+  ? y_sum = 1.0
+
+report:
+  eps1, eps2
+  n_CH4, n_H2O, n_CO, n_H2, n_CO2, n_tot
+  y_CH4, y_H2O, y_CO, y_H2, y_CO2, y_sum
+
+solve:
+  backend = scipy
+  method = SLSQP
+  tol = 1e-10
+  max_iter = 400
+  max_restarts = 2

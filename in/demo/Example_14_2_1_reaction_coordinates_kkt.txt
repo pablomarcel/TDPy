@@ -1,0 +1,180 @@
+title: Klein & Nellis Example 14.2-1 — Maximize y_H2 via KKT (algebraic, unrolled; GEKKO-friendly)
+
+given:
+  # -------------------- initial amounts (kmol) --------------------
+  n0_CH4 = 2.0
+  n0_H2O = 3.0
+  n0_CO  = 0.0
+  n0_H2  = 0.0
+  n0_CO2 = 1.0
+
+  # -------------------- stoichiometric coefficients nu[i,r] --------------------
+  # Reaction 1:  CH4 + H2O -> CO + 3 H2
+  nu_CH4_1 = -1.0
+  nu_H2O_1 = -1.0
+  nu_CO_1  =  1.0
+  nu_H2_1  =  3.0
+  nu_CO2_1 =  0.0
+
+  # Reaction 2:  CO2 + H2 -> CO + H2O  (reverse water-gas shift, as coded in the book)
+  nu_CH4_2 =  0.0
+  nu_H2O_2 =  1.0
+  nu_CO_2  =  1.0
+  nu_H2_2  = -1.0
+  nu_CO2_2 = -1.0
+
+  # Numerical safety for divisions
+  EPS = 1e-12
+
+  # KKT residual targets (treat these as constraints = 0)
+  comp_CH4 = 0.0
+  comp_H2O = 0.0
+  comp_CO  = 0.0
+  comp_H2  = 0.0
+  comp_CO2 = 0.0
+
+  stat_eps1 = 0.0
+  stat_eps2 = 0.0
+
+guess:
+  # -------------------- Decision variables (reaction coordinates) --------------------
+  # A good KKT point for maximizing y_H2 occurs at eps1=2, eps2=-1 (active: n_CH4=0, n_H2O=0)
+  eps1 = 2.0
+  eps2 = -1.0
+
+  # -------------------- Mole numbers (kmol) --------------------
+  n_CH4 = 0.0
+  n_H2O = 0.0
+  n_CO  = 1.0
+  n_H2  = 7.0
+  n_CO2 = 2.0
+  n_tot = 10.0
+
+  # -------------------- Mole fractions --------------------
+  y_CH4 = 0.0
+  y_H2O = 0.0
+  y_CO  = 0.1
+  y_H2  = 0.7
+  y_CO2 = 0.2
+  y_sum = 1.0
+
+  # -------------------- KKT slack variables (enforce n_i >= 0 via n_i = s_i^2) --------------------
+  s_CH4 = 0.0
+  s_H2O = 0.0
+  s_CO  = 1.0
+  s_H2  = 2.64575131   # ~sqrt(7)
+  s_CO2 = 1.41421356   # ~sqrt(2)
+
+  # -------------------- KKT multipliers (mu_i = m_i^2, so mu_i >= 0) --------------------
+  # For the active constraints (CH4, H2O) multipliers are nonzero; others ~0
+  m_CH4 = 0.24494897   # ~sqrt(0.06)
+  m_H2O = 0.31622777   # ~sqrt(0.10)
+  m_CO  = 0.0
+  m_H2  = 0.0
+  m_CO2 = 0.0
+
+  mu_CH4 = 0.06
+  mu_H2O = 0.10
+  mu_CO  = 0.0
+  mu_H2  = 0.0
+  mu_CO2 = 0.0
+
+  den  = 10.0
+  df1  = -0.16
+  df2  = 0.10
+  f_obj = -0.70
+
+equations:
+  # ---------------------------------------------------------------------------
+  # Mole balances (unrolled duplicate + sum): n_i = n0_i + sum_j nu_{i,j} * eps_j
+  # ---------------------------------------------------------------------------
+  n_CH4 = n0_CH4 + nu_CH4_1*eps1 + nu_CH4_2*eps2
+  n_H2O = n0_H2O + nu_H2O_1*eps1 + nu_H2O_2*eps2
+  n_CO  = n0_CO  + nu_CO_1*eps1  + nu_CO_2*eps2
+  n_H2  = n0_H2  + nu_H2_1*eps1  + nu_H2_2*eps2
+  n_CO2 = n0_CO2 + nu_CO2_1*eps1 + nu_CO2_2*eps2
+
+  n_tot = n_CH4 + n_H2O + n_CO + n_H2 + n_CO2
+
+  # Mole fractions
+  y_CH4 = n_CH4/(n_tot + EPS)
+  y_H2O = n_H2O/(n_tot + EPS)
+  y_CO  = n_CO /(n_tot + EPS)
+  y_H2  = n_H2 /(n_tot + EPS)
+  y_CO2 = n_CO2/(n_tot + EPS)
+  y_sum = y_CH4 + y_H2O + y_CO + y_H2 + y_CO2
+
+  # ---------------------------------------------------------------------------
+  # Objective: maximize y_H2  <=>  minimize f_obj = -y_H2
+  # ---------------------------------------------------------------------------
+  f_obj = -y_H2
+
+  # ---------------------------------------------------------------------------
+  # KKT setup (inequality constraints: n_i >= 0)
+  # Enforce n_i >= 0 using squared slacks: n_i = s_i^2
+  # ---------------------------------------------------------------------------
+  n_CH4 = s_CH4^2
+  n_H2O = s_H2O^2
+  n_CO  = s_CO^2
+  n_H2  = s_H2^2
+  n_CO2 = s_CO2^2
+
+  # Multipliers mu_i >= 0 using squares: mu_i = m_i^2
+  mu_CH4 = m_CH4^2
+  mu_H2O = m_H2O^2
+  mu_CO  = m_CO^2
+  mu_H2  = m_H2^2
+  mu_CO2 = m_CO2^2
+
+  # Complementary slackness: mu_i * n_i = 0  (implemented as m_i*s_i = 0)
+  comp_CH4 = m_CH4*s_CH4
+  comp_H2O = m_H2O*s_H2O
+  comp_CO  = m_CO*s_CO
+  comp_H2  = m_H2*s_H2
+  comp_CO2 = m_CO2*s_CO2
+
+  # ---------------------------------------------------------------------------
+  # Stationarity conditions: grad(f_obj) - Sum_i mu_i * grad(n_i) = 0
+  # Here x = [eps1, eps2]. The gradients grad(n_i) are stoichiometric columns:
+  #   d/d eps1: [-1, -1, +1, +3,  0]
+  #   d/d eps2: [ 0, +1, +1, -1, -1]
+  # ---------------------------------------------------------------------------
+  den = n_tot + EPS
+
+  # f_obj = -y_H2;  y_H2 = n_H2 / den
+  # dy/deps1 = (dn_H2/deps1 * den - n_H2 * dden/deps1)/den^2,  with dn_H2/deps1=3 and dden/deps1=2
+  df1 = -(3*den - 2*n_H2)/(den^2)
+
+  # dy/deps2 = (dn_H2/deps2 * den - n_H2 * dden/deps2)/den^2, with dn_H2/deps2=-1 and dden/deps2=0
+  # df2 = -dy/deps2 = 1/den
+  df2 = 1/den
+
+  # Stationarity (eps1 component)
+  stat_eps1 = df1 + mu_CH4 + mu_H2O - mu_CO - 3*mu_H2
+
+  # Stationarity (eps2 component)
+  stat_eps2 = df2 - mu_H2O - mu_CO + mu_H2 + mu_CO2
+
+report:
+  # Decision variables
+  eps1, eps2
+
+  # Mole numbers and feasibility (all should be >= 0)
+  n_CH4, n_H2O, n_CO, n_H2, n_CO2, n_tot
+
+  # Mole fractions and objective
+  y_CH4, y_H2O, y_CO, y_H2, y_CO2, y_sum
+  f_obj
+
+  # KKT diagnostics
+  s_CH4, s_H2O, s_CO, s_H2, s_CO2
+  mu_CH4, mu_H2O, mu_CO, mu_H2, mu_CO2
+  comp_CH4, comp_H2O, comp_CO, comp_H2, comp_CO2
+  df1, df2
+  stat_eps1, stat_eps2
+
+solve:
+  backend = auto
+  method = hybr
+  tol = 1e-10
+  max_iter = 120

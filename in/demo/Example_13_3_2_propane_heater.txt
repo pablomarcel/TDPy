@@ -1,0 +1,151 @@
+title: Klein & Nellis Example 13.3-2 (Propane Heater) — SI molar, table interpolation
+
+given:
+  # --- Known operating conditions ---
+  T_in_C         = 25.0        # C  air + propane inlet temperature
+  T_out_C        = 200.0       # C  products outlet temperature
+  P_atm          = 1.0         # atm
+  V_dot_a_in_cfm = 25.0        # cfm entering air volumetric flow rate
+
+  # --- Air composition (dry air) ---
+  y_O2 = 0.21
+  y_N2 = 0.79
+
+  # --- 150% theoretical air == 50% excess air ---
+  excess_air_frac = 0.50       # 0.50 -> air_factor = 1.50
+
+  # --- Constants / conversions ---
+  C_to_K    = 273.15
+  atm_to_Pa = 101325.0
+  ft_to_m   = 0.3048
+  min_to_s  = 60.0
+  mol_to_kmol = 0.001          # kmol/mol
+
+  # Universal gas constant (ideal gas law)
+  R_u = 8.314462618            # J/(mol*K)
+
+  # --- Standardized molar enthalpies (kJ/kmol) at inlet reference (Tref = 25C) ---
+  # From the exhibit: h_std_C3H8,in = -104674 kJ/kmol
+  h_std_C3H8_in = -104674.0
+  h_std_O2_in   = 0.0
+  h_std_N2_in   = 0.0
+
+  # --- Appendix-F bracket used in the exhibits (K) ---
+  T_tab_1 = 460.0
+  T_tab_2 = 480.0
+
+  # --- Appendix-F standardized molar enthalpy points (kJ/kmol), exactly as shown ---
+  # CO2:
+  h_std_CO2_T1 = -386936.0
+  h_std_CO2_T2 = -386060.0
+
+  # O2:
+  h_std_O2_T1  = 4861.0
+  h_std_O2_T2  = 5481.0
+
+  # N2:
+  h_std_N2_T1  = 4727.0
+  h_std_N2_T2  = 5318.0
+
+  # H2O(g):
+  h_std_H2O_T1 = -236290.0
+  h_std_H2O_T2 = -235594.0
+
+guess:
+  # Stoichiometric + actual reaction coefficients
+  a_s = 24.0
+  b_s = 3.0
+  c_s = 4.0
+  d_s = 19.0
+
+  a   = 36.0
+  b   = 3.0
+  c   = 4.0
+  d   = 28.0
+  e_O2 = 2.5
+
+  # Flows / results
+  n_dot_a_in = 5.0e-4          # kmol/s (ballpark)
+  Q_dot_htr_kW = 25.0          # kW
+
+equations:
+  # -------------------- unit conversions --------------------
+  T_in   = T_in_C  + C_to_K
+  T_out  = T_out_C + C_to_K
+  T_ref  = 25.0    + C_to_K
+  P      = P_atm * atm_to_Pa
+
+  ft3_to_m3  = ft_to_m^3
+  cfm_to_m3s = ft3_to_m3 / min_to_s
+  V_dot_a_in = V_dot_a_in_cfm * cfm_to_m3s
+
+  # -------------------- stoichiometric reaction (basis: 1 mol fuel) --------------------
+  # C3H8 + a_s(0.21 O2 + 0.79 N2) -> b_s CO2 + c_s H2O + d_s N2
+  3 = b_s
+  8 = 2*c_s
+  y_O2*2*a_s = 2*b_s + c_s
+  y_N2*2*a_s = 2*d_s
+
+  # -------------------- actual reaction (150% theoretical air) --------------------
+  # C3H8 + a(0.21 O2 + 0.79 N2) -> b CO2 + c H2O + d N2 + e_O2 O2
+  air_factor = 1.0 + excess_air_frac
+  a = air_factor * a_s
+
+  3 = b
+  8 = 2*c
+  y_O2*2*a = 2*b + c + 2*e_O2
+  y_N2*2*a = 2*d
+
+  # -------------------- inlet air molar flow (ideal gas) --------------------
+  # molar specific volume vbar = R*T/P (m^3/mol) using R in J/mol-K and P in Pa
+  v_bar_a_in = R_u*T_in / P
+  n_dot_a_in_mol_s = V_dot_a_in / v_bar_a_in
+  n_dot_a_in = n_dot_a_in_mol_s * mol_to_kmol     # kmol/s
+
+  n_dot_O2_in = y_O2 * n_dot_a_in
+  n_dot_N2_in = y_N2 * n_dot_a_in
+
+  # -------------------- fuel + product molar flows (kmol/s) --------------------
+  n_dot_C3H8_in = n_dot_a_in / a
+
+  n_dot_CO2_out = b    * n_dot_a_in / a
+  n_dot_H2O_out = c    * n_dot_a_in / a
+  n_dot_N2_out  = d    * n_dot_a_in / a
+  n_dot_O2_out  = e_O2 * n_dot_a_in / a
+
+  # -------------------- dew point check (matches the exhibit logic) --------------------
+  P_v_out = c*P/(b + c + d + e_O2)
+  T_dp_out = PropsSI("T","P",P_v_out,"Q",0,"Water")
+  T_dp_out_C = T_dp_out - C_to_K
+  superheat_margin_C = T_out_C - T_dp_out_C
+
+  # -------------------- Appendix-F linear interpolation (exactly what the book does) --------------------
+  h_std_CO2_out = h_std_CO2_T1 + (T_out - T_tab_1)*(h_std_CO2_T2 - h_std_CO2_T1)/(T_tab_2 - T_tab_1)
+  h_std_O2_out  = h_std_O2_T1  + (T_out - T_tab_1)*(h_std_O2_T2  - h_std_O2_T1 )/(T_tab_2 - T_tab_1)
+  h_std_N2_out  = h_std_N2_T1  + (T_out - T_tab_1)*(h_std_N2_T2  - h_std_N2_T1 )/(T_tab_2 - T_tab_1)
+  h_std_H2O_out = h_std_H2O_T1 + (T_out - T_tab_1)*(h_std_H2O_T2 - h_std_H2O_T1)/(T_tab_2 - T_tab_1)
+
+  # -------------------- energy balance --------------------
+  # Hdot_R = ndot_fuel*hstd_fuel,in + ndot_O2,in*hstd_O2,in + ndot_N2,in*hstd_N2,in
+  H_dot_R = n_dot_C3H8_in*h_std_C3H8_in + n_dot_O2_in*h_std_O2_in + n_dot_N2_in*h_std_N2_in
+
+  # Hdot_P = sum products ndot_i * hstd_i,out
+  H_dot_P = n_dot_CO2_out*h_std_CO2_out + n_dot_H2O_out*h_std_H2O_out + n_dot_N2_out*h_std_N2_out + n_dot_O2_out*h_std_O2_out
+
+  # H_R = H_P + Q_htr  =>  Q_htr = H_R - H_P
+  Q_dot_htr_kW = H_dot_R - H_dot_P
+
+report:
+  # Primary answer
+  Q_dot_htr_kW
+
+  # Sanity checks that match the narrative in the book
+  T_dp_out_C
+  superheat_margin_C
+
+  # Reaction coefficients and key flows (useful for debugging)
+  a_s, b_s, c_s, d_s
+  a, b, c, d, e_O2
+  n_dot_a_in
+  n_dot_C3H8_in
+  n_dot_CO2_out, n_dot_H2O_out, n_dot_N2_out, n_dot_O2_out

@@ -1,0 +1,94 @@
+title: Klein & Nellis Example 14.3-1 — CT equilibrium with frozen Cantera constants (fast)
+
+given:
+  # Inputs (book basis: kmol, SI)
+  n0_CH4 = 2.0
+  n0_H2O = 3.0
+  n0_CO2 = 1.0
+  T      = 1100.0
+  P_bar  = 10.0
+  P      = P_bar * 1e5
+
+  P_ref  = 101325.0
+  eps_a  = 1e-30
+
+  # --- Frozen standard-state results (computed once with CTPropsSI at T=1100 K, P_ref=101325 Pa) ---
+  gbar0_CH4 = -309418226.14747727
+  gbar0_H2O = -472032649.8727549
+  gbar0_CO  = -346999892.5965687
+  gbar0_H2  = -162319437.00415164
+  gbar0_CO2 = -656590254.9771527
+
+  dG0_1 = -52507327.58879143
+  dG0_2 = -122850.48801934719
+
+  # ln(K) constants for the two reactions at this T
+  L1 = 5.741072678382036
+  L2 = 0.013432288647734008
+
+guess:
+  # Start near the converged solution you already saw
+  e1 = 1.58
+  e2 = 0.30
+
+  n_CH4 = 0.42
+  n_H2O = 1.72
+  n_CO  = 1.88
+  n_H2  = 4.45
+  n_CO2 = 0.70
+  n_tot = 9.16
+
+  y_CH4 = 0.043
+  y_H2O = 0.184
+  y_CO  = 0.206
+  y_H2  = 0.490
+  y_CO2 = 0.076
+
+  a_CH4 = 0.43
+  a_H2O = 1.82
+  a_CO  = 2.04
+  a_H2  = 4.84
+  a_CO2 = 0.75
+
+equations:
+  # Use "0 = ..." form so definitional constraints are enforced tightly.
+  0 = n_CH4 - (n0_CH4 - e1)
+  0 = n_H2O - (n0_H2O - e1 + e2)
+  0 = n_CO  - (0.0   + e1 + e2)
+  0 = n_H2  - (0.0   + 3.0*e1 - e2)
+  0 = n_CO2 - (n0_CO2 - e2)
+
+  0 = n_tot - (n_CH4 + n_H2O + n_CO + n_H2 + n_CO2)
+
+  0 = y_CH4 - (n_CH4 / n_tot)
+  0 = y_H2O - (n_H2O / n_tot)
+  0 = y_CO  - (n_CO  / n_tot)
+  0 = y_H2  - (n_H2  / n_tot)
+  0 = y_CO2 - (n_CO2 / n_tot)
+
+  0 = a_CH4 - (y_CH4 * P / P_ref + eps_a)
+  0 = a_H2O - (y_H2O * P / P_ref + eps_a)
+  0 = a_CO  - (y_CO  * P / P_ref + eps_a)
+  0 = a_H2  - (y_H2  * P / P_ref + eps_a)
+  0 = a_CO2 - (y_CO2 * P / P_ref + eps_a)
+
+  # Log-form mass-action equilibrium constraints:
+  0 = ((-1.0)*ln(a_CH4) + (-1.0)*ln(a_H2O) + (1.0)*ln(a_CO) + (3.0)*ln(a_H2)) - L1
+  0 = ((1.0)*ln(a_H2O) + (1.0)*ln(a_CO) + (-1.0)*ln(a_H2) + (-1.0)*ln(a_CO2)) - L2
+
+report:
+  T, P_bar, P, P_ref
+  e1, e2
+  n_CH4, n_H2O, n_CO, n_H2, n_CO2, n_tot
+  y_CH4, y_H2O, y_CO, y_H2, y_CO2
+  a_CH4, a_H2O, a_CO, a_H2, a_CO2
+  gbar0_CH4, gbar0_H2O, gbar0_CO, gbar0_H2, gbar0_CO2
+  dG0_1, dG0_2
+  L1, L2
+  exp(L1), exp(L2)
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-12
+  max_iter = 60

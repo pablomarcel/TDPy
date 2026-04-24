@@ -1,0 +1,173 @@
+title: Klein & Nellis Example 13.3-4 — Explosion Pressure of Methane (adiabatic, closed vessel) — PropsSI HMOLAR
+
+given:
+  # ---------------- inputs ----------------
+  D_v_cm    = 10          # cm   vessel internal diameter
+  T_R_C     = 25          # C    reactants temperature
+  P_R_bar   = 1           # bar  reactants pressure
+  y_CH4     = 0.09        # [-]  methane mole fraction in reactants
+  P_exp_bar = 8.25        # bar  experimental explosion pressure
+
+  # ---------------- constants ----------------
+  cm_to_m   = 0.01
+  bar_to_Pa = 1e5
+  C_to_K    = 273.15
+  R_u       = 8.314462618     # J/mol-K
+
+  y_O2_air  = 0.21
+  y_N2_air  = 0.79
+
+  # "ideal-gas pressure" used in HMOLAR calls (keep constant; avoids coupling to unknown P)
+  P_ig = 101325.0
+
+  # reference temperature (25C) for standardized enthalpy construction
+  T_ref = 25 + C_to_K
+
+  # ---------------- geometry + reactant moles ----------------
+  D_v_m  = D_v_cm * cm_to_m
+  T_R_K  = T_R_C + C_to_K
+  P_R_Pa = P_R_bar * bar_to_Pa
+
+  Vol = 4*pi*(D_v_m/2)^3/3
+
+  # total moles of reactants in vessel (ideal gas)
+  n_R = P_R_Pa*Vol/(R_u*T_R_K)
+
+  # moles in reactants
+  n_CH4 = y_CH4*n_R
+  n_air = n_R - n_CH4
+
+  # actual air coefficient (mol air per mol CH4)
+  a = n_air / n_CH4
+
+  # stoichiometric air coefficient for CH4: CH4 + 2 O2 -> ...
+  a_s = 2 / y_O2_air
+  percent_theoretical_air = 100 * a / a_s
+
+  # product coefficients per mol CH4:
+  # CH4 + a(0.21 O2 + 0.79 N2) -> b CO2 + c H2O + d N2 + e_O2 O2
+  b = 1
+  c = 2
+  d = a * y_N2_air
+  e_O2 = a * y_O2_air - 2
+
+  # total moles of products in the vessel
+  n_P = n_CH4*(b + c + d + e_O2)
+
+  # methane mass (part a)
+  MW_CH4   = 0.01604246     # kg/mol
+  m_CH4_kg = n_CH4 * MW_CH4
+  m_CH4_g  = m_CH4_kg * 1000
+
+
+  # ---------------- formation enthalpies (J/mol) ----------------
+  # NOTE: These are commonly tabulated as kJ/kmol; numerically identical to J/mol.
+  h_form_CH4_g = -74850.0
+  h_form_CO2_g = -393520.0
+  h_form_H2O_g = -241826.0
+  h_form_O2_g  = 0.0
+  h_form_N2_g  = 0.0
+
+
+guess:
+  # only temperature needs a sane start (book solution ~2715 K)
+  T_P_K = 2700.0
+
+
+equations:
+  # ---------------- convenience ----------------
+  T_P_C = T_P_K - C_to_K
+
+  # ============================================================
+  # Reactants: standardized molar enthalpies at T_R
+  # h_i(T) = h_form_i + (HMOLAR(T) - HMOLAR(T_ref))
+  # ============================================================
+
+  HMOLAR_CH4_R    = PropsSI("HMOLAR","T",T_R_K,"P",P_ig,"Methane")
+  HMOLAR_CH4_ref  = PropsSI("HMOLAR","T",T_ref,"P",P_ig,"Methane")
+  h_CH4_R         = h_form_CH4_g + (HMOLAR_CH4_R - HMOLAR_CH4_ref)
+
+  HMOLAR_O2_R     = PropsSI("HMOLAR","T",T_R_K,"P",P_ig,"Oxygen")
+  HMOLAR_O2_ref   = PropsSI("HMOLAR","T",T_ref,"P",P_ig,"Oxygen")
+  h_O2_R          = h_form_O2_g + (HMOLAR_O2_R - HMOLAR_O2_ref)
+
+  HMOLAR_N2_R     = PropsSI("HMOLAR","T",T_R_K,"P",P_ig,"Nitrogen")
+  HMOLAR_N2_ref   = PropsSI("HMOLAR","T",T_ref,"P",P_ig,"Nitrogen")
+  h_N2_R          = h_form_N2_g + (HMOLAR_N2_R - HMOLAR_N2_ref)
+
+  # Total reactant enthalpy (J)
+  H_R = n_CH4*(h_CH4_R + a*y_O2_air*h_O2_R + a*y_N2_air*h_N2_R)
+
+  # Reactant internal energy (J): U = H - n R T
+  U_R = H_R - n_R*R_u*T_R_K
+
+
+  # ============================================================
+  # Products: standardized molar enthalpies at T_P
+  # ============================================================
+
+  HMOLAR_CO2_P    = PropsSI("HMOLAR","T",T_P_K,"P",P_ig,"CarbonDioxide")
+  HMOLAR_CO2_ref  = PropsSI("HMOLAR","T",T_ref,"P",P_ig,"CarbonDioxide")
+  h_CO2_P         = h_form_CO2_g + (HMOLAR_CO2_P - HMOLAR_CO2_ref)
+
+  # Water reference must be vapor at T_ref; use Q=1 like your furnace example
+  HMOLAR_H2O_P       = PropsSI("HMOLAR","T",T_P_K,"P",P_ig,"Water")
+  HMOLAR_H2O_g_ref   = PropsSI("HMOLAR","T",T_ref,"Q",1,"Water")
+  h_H2O_P            = h_form_H2O_g + (HMOLAR_H2O_P - HMOLAR_H2O_g_ref)
+
+  HMOLAR_N2_P     = PropsSI("HMOLAR","T",T_P_K,"P",P_ig,"Nitrogen")
+  # reuse HMOLAR_N2_ref from above at T_ref
+  h_N2_P          = h_form_N2_g + (HMOLAR_N2_P - HMOLAR_N2_ref)
+
+  HMOLAR_O2_P     = PropsSI("HMOLAR","T",T_P_K,"P",P_ig,"Oxygen")
+  # reuse HMOLAR_O2_ref from above at T_ref
+  h_O2_P          = h_form_O2_g + (HMOLAR_O2_P - HMOLAR_O2_ref)
+
+  # Total product enthalpy (J)
+  H_P = n_CH4*(b*h_CO2_P + c*h_H2O_P + d*h_N2_P + e_O2*h_O2_P)
+
+  # Product internal energy (J)
+  U_P = H_P - n_P*R_u*T_P_K
+
+
+  # ============================================================
+  # Adiabatic closed vessel energy balance (book Eq. 5)
+  # ============================================================
+  U_R = U_P
+
+
+  # ============================================================
+  # Explosion pressure from ideal gas law on products
+  # ============================================================
+  P_P_Pa  = n_P*R_u*T_P_K / Vol
+  P_P_bar = P_P_Pa / bar_to_Pa
+  P_ratio = P_P_bar / P_exp_bar
+
+
+solve:
+  backend = scipy
+  method  = hybr
+  tol     = 1e-9
+  max_iter = 200
+  max_restarts = 2
+
+
+report:
+  Vol
+  n_R
+  n_CH4
+  n_air
+  m_CH4_g
+  a
+  a_s
+  percent_theoretical_air
+  b
+  c
+  d
+  e_O2
+  n_P
+  T_P_K
+  T_P_C
+  P_P_bar
+  P_exp_bar
+  P_ratio

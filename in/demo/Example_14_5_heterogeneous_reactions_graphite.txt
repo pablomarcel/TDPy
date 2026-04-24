@@ -1,0 +1,52 @@
+title: Smoke test — CTPropsSI can load graphite.yaml (C(gr)) and compute properties
+
+given:
+  # Pick any reasonable state inside NASA7 ranges
+  T     = 950.0       # K
+  P_ref = 101325.0    # Pa  (use as "standard-state" pressure)
+  R_u   = 8314.462618 # J/(kmol*K)
+
+  # Cantera phase/species source (your graphite.yaml)
+  solid_src = "graphite.yaml|X=C(gr):1"
+
+guess:
+  # Just seed values; solver will overwrite.
+  hC = 0.0
+  sC = 0.0
+  gC = 0.0
+  cpC = 0.0
+  phiC = 0.0
+  gC_from_hs = 0.0
+  gC_err = 0.0
+
+equations:
+  # ---- raw properties (J/kmol, J/kmol-K) ----
+  hC  = CTPropsSI("HMOLAR","T",T,"P",P_ref, solid_src)
+  sC  = CTPropsSI("SMOLAR","T",T,"P",P_ref, solid_src)
+  gC  = CTPropsSI("GMOLAR","T",T,"P",P_ref, solid_src)
+  cpC = CTPropsSI("CPMOLAR","T",T,"P",P_ref, solid_src)
+
+  # ---- derived checks ----
+  phiC = gC / (R_u*T)
+  gC_from_hs = hC - T*sC
+  gC_err = gC - gC_from_hs
+
+report:
+  T, P_ref
+  solid_src
+  hC, sC, gC, cpC
+  phiC
+  gC_from_hs
+  gC_err
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-12
+  max_iter = 200
+  max_restarts = 2
+  thermo_penalty = 1e9
+  warm_start = 1
+  warm_start_passes = 6
+  warm_start_mode = override
+  auto_guess = 1

@@ -1,0 +1,258 @@
+title: Klein & Nellis Example 14.3-1 — Reformation of Methane (Mass Action; domain-safe log-mole form; bounded eps; CoolProp h,s at P_ref)
+
+given:
+  # -------------------- conditions --------------------
+  T     = 1100.0        # K
+  P     = 1000000.0     # Pa   (10 bar)
+  P_ref = 101325.0      # Pa   (1 atm reference)
+
+  # Universal gas constant (molar)
+  R_u   = 8.31446261815324   # J/(mol*K)
+
+  # Pressure ratio and its log (kept as givens to avoid ln() domain issues)
+  pr    = 9.869232667160128     # = P/P_ref
+  lnpr2 = 4.57884421293553      # = 2*ln(pr)
+
+  # -------------------- initial amounts (kmol) --------------------
+  n0_CH4 = 2.0
+  n0_H2O = 3.0
+  n0_CO  = 0.0
+  n0_H2  = 0.0
+  n0_CO2 = 1.0
+
+  # -------------------- stoichiometric coefficients nu[i,r] --------------------
+  # Reaction 1:  CH4 + H2O <-> CO + 3 H2
+  nu_CH4_1 = -1.0
+  nu_H2O_1 = -1.0
+  nu_CO_1  =  1.0
+  nu_H2_1  =  3.0
+  nu_CO2_1 =  0.0
+
+  # Reaction 2:  CO2 + H2 <-> CO + H2O  (as coded in the book)
+  nu_CH4_2 =  0.0
+  nu_H2O_2 =  1.0
+  nu_CO_2  =  1.0
+  nu_H2_2  = -1.0
+  nu_CO2_2 = -1.0
+
+  # Numerical safety
+  EPS_DEN = 1e-12
+  DELTA   = 1e-12
+
+  # Log-mole bounding:
+  #   u_i = umax*tanh(v_i)  in (-umax,umax)
+  #   n_i = exp(u_i)        so n_i is strictly positive and exp never overflows
+  umax = 60.0
+
+  # Optional per-species reference shifts (constants added to H and S)
+  # These are knobs to align CoolProp's arbitrary h,s to an external absolute scale.
+  # Leave at 0 unless you have target values (e.g., NASA ideal-gas database).
+  dH_CH4 = 0.0
+  dS_CH4 = 0.0
+  dH_H2O = 0.0
+  dS_H2O = 0.0
+  dH_CO  = 0.0
+  dS_CO  = 0.0
+  dH_H2  = 0.0
+  dS_H2  = 0.0
+  dH_CO2 = 0.0
+  dS_CO2 = 0.0
+
+  # Equilibrium residual targets
+  eq1 = 0.0
+  eq2 = 0.0
+
+  # Residual scaling (conditioning)
+  S1 = 10.0
+  S2 = 10.0
+
+guess:
+  # ---------------------------------------------------------------------------
+  # Bounded reaction-coordinate seeds
+  # eps1 = 2*sigmoid(z1) so eps1 ~ 1.999 when z1 ~ 7.6
+  # eps2 is mapped into its feasible band via sigmoid(z2)
+  # ---------------------------------------------------------------------------
+  z1 = 7.60
+  z2 = -1.04
+
+  eps1 = 1.999
+  eps2 = -0.48
+
+  # Rough near-equilibrium composition seeds (kmol)
+  n_CH4 = 1e-3
+  n_H2O = 0.521
+  n_CO  = 1.519
+  n_H2  = 6.477
+  n_CO2 = 1.480
+  n_tot = 9.998
+
+  # v_i seeds (roughly ln(n)/umax)
+  v_CH4 = -0.12
+  v_H2O = -0.01
+  v_CO  =  0.01
+  v_H2  =  0.03
+  v_CO2 =  0.01
+  v_tot =  0.04
+
+  # Diagnostics
+  y_CH4 = 0.0001
+  y_H2O = 0.0521
+  y_CO  = 0.152
+  y_H2  = 0.648
+  y_CO2 = 0.148
+  y_sum = 1.0
+
+equations:
+  # ---------------------------------------------------------------------------
+  # 1) Bounded reaction-coordinate mapping
+  # eps1 in (0,2): eps1 = 2*sigmoid(z1)
+  # eps2 in feasible band:
+  #   lower = max(-eps1, eps1-3)
+  #   upper = min(1, 3*eps1)
+  #   eps2 = lower + (upper-lower)*sigmoid(z2)
+  # Smooth max/min via sqrt((a-b)^2+DELTA)
+  # ---------------------------------------------------------------------------
+  s1 = 1/(1 + exp(-z1))
+  eps1 = 2*s1
+
+  L1 = -eps1
+  L2 = eps1 - 3
+  L  = 0.5*(L1 + L2 + sqrt((L1 - L2)^2 + DELTA))        # ~max(L1,L2)
+
+  U1 = 1
+  U2 = 3*eps1
+  U  = 0.5*(U1 + U2 - sqrt((U1 - U2)^2 + DELTA))        # ~min(U1,U2)
+
+  w_raw = U - L
+  w     = 0.5*(w_raw + sqrt(w_raw^2 + DELTA))           # ~max(w_raw,0)
+
+  s2 = 1/(1 + exp(-z2))
+  eps2 = L + w*s2
+
+  # ---------------------------------------------------------------------------
+  # 2) Log-mole mapping (domain-safe)
+  # ---------------------------------------------------------------------------
+  u_CH4 = umax*tanh(v_CH4)
+  u_H2O = umax*tanh(v_H2O)
+  u_CO  = umax*tanh(v_CO)
+  u_H2  = umax*tanh(v_H2)
+  u_CO2 = umax*tanh(v_CO2)
+  u_tot = umax*tanh(v_tot)
+
+  n_CH4 = exp(u_CH4)
+  n_H2O = exp(u_H2O)
+  n_CO  = exp(u_CO)
+  n_H2  = exp(u_H2)
+  n_CO2 = exp(u_CO2)
+  n_tot = exp(u_tot)
+
+  # ---------------------------------------------------------------------------
+  # 3) Stoichiometric mole balances
+  # (These equalities + exp(u) mapping keep n_i strictly positive AND feasible)
+  # ---------------------------------------------------------------------------
+  n_CH4 = n0_CH4 + nu_CH4_1*eps1 + nu_CH4_2*eps2
+  n_H2O = n0_H2O + nu_H2O_1*eps1 + nu_H2O_2*eps2
+  n_CO  = n0_CO  + nu_CO_1*eps1  + nu_CO_2*eps2
+  n_H2  = n0_H2  + nu_H2_1*eps1  + nu_H2_2*eps2
+  n_CO2 = n0_CO2 + nu_CO2_1*eps1 + nu_CO2_2*eps2
+
+  # Total moles consistency (forces u_tot = ln(n_tot))
+  n_tot = n_CH4 + n_H2O + n_CO + n_H2 + n_CO2
+
+  # Mole fractions (diagnostics)
+  y_CH4 = n_CH4/(n_tot + EPS_DEN)
+  y_H2O = n_H2O/(n_tot + EPS_DEN)
+  y_CO  = n_CO /(n_tot + EPS_DEN)
+  y_H2  = n_H2 /(n_tot + EPS_DEN)
+  y_CO2 = n_CO2/(n_tot + EPS_DEN)
+  y_sum = y_CH4 + y_H2O + y_CO + y_H2 + y_CO2
+
+  # ---------------------------------------------------------------------------
+  # 4) Standard-state Gibbs free energies (approx via CoolProp at P_ref)
+  # NOTE: CoolProp h,s are NOT chemical formation values; these are thermophysical.
+  # The dH_*/dS_* knobs allow constant reference shifts per species.
+  # ---------------------------------------------------------------------------
+  h_CH4_raw  = PropsSI("Hmolar","T",T,"P",P_ref,"HEOS::Methane")
+  s_CH4_raw  = PropsSI("Smolar","T",T,"P",P_ref,"HEOS::Methane")
+  h_CH4      = h_CH4_raw + dH_CH4
+  s_CH4m     = s_CH4_raw + dS_CH4
+  g0_CH4     = h_CH4 - T*s_CH4m
+
+  h_H2O_raw  = PropsSI("Hmolar","T",T,"P",P_ref,"HEOS::Water")
+  s_H2O_raw  = PropsSI("Smolar","T",T,"P",P_ref,"HEOS::Water")
+  h_H2O      = h_H2O_raw + dH_H2O
+  s_H2Om     = s_H2O_raw + dS_H2O
+  g0_H2O     = h_H2O - T*s_H2Om
+
+  h_CO_raw   = PropsSI("Hmolar","T",T,"P",P_ref,"HEOS::CarbonMonoxide")
+  s_CO_raw   = PropsSI("Smolar","T",T,"P",P_ref,"HEOS::CarbonMonoxide")
+  h_CO       = h_CO_raw + dH_CO
+  s_COm      = s_CO_raw + dS_CO
+  g0_CO      = h_CO - T*s_COm
+
+  h_H2_raw   = PropsSI("Hmolar","T",T,"P",P_ref,"HEOS::Hydrogen")
+  s_H2_raw   = PropsSI("Smolar","T",T,"P",P_ref,"HEOS::Hydrogen")
+  h_H2       = h_H2_raw + dH_H2
+  s_H2m      = s_H2_raw + dS_H2
+  g0_H2      = h_H2 - T*s_H2m
+
+  h_CO2_raw  = PropsSI("Hmolar","T",T,"P",P_ref,"HEOS::CarbonDioxide")
+  s_CO2_raw  = PropsSI("Smolar","T",T,"P",P_ref,"HEOS::CarbonDioxide")
+  h_CO2      = h_CO2_raw + dH_CO2
+  s_CO2m     = s_CO2_raw + dS_CO2
+  g0_CO2     = h_CO2 - T*s_CO2m
+
+  # Standard Gibbs changes for reactions
+  dG0_1 = nu_CH4_1*g0_CH4 + nu_H2O_1*g0_H2O + nu_CO_1*g0_CO + nu_H2_1*g0_H2 + nu_CO2_1*g0_CO2
+  dG0_2 = nu_CH4_2*g0_CH4 + nu_H2O_2*g0_H2O + nu_CO_2*g0_CO + nu_H2_2*g0_H2 + nu_CO2_2*g0_CO2
+
+  lnK1 = -dG0_1/(R_u*T)
+  lnK2 = -dG0_2/(R_u*T)
+
+  # ---------------------------------------------------------------------------
+  # 5) Law of mass action in log form — but expressed ONLY with u-variables.
+  # This removes ALL ln() calls from the nonlinear system, so SciPy can't
+  # crash even if a restart jitters intermediate variables.
+  #
+  # Using y_i = n_i/n_tot and ln(n_i)=u_i, ln(n_tot)=u_tot:
+  # Reaction 1: CH4 + H2O <-> CO + 3 H2
+  #   lnK1_calc = u_CO + 3*u_H2 - u_CH4 - u_H2O - 2*u_tot + 2*ln(pr)
+  # Reaction 2: CO2 + H2 <-> CO + H2O
+  #   lnK2_calc = u_CO + u_H2O - u_H2 - u_CO2
+  # ---------------------------------------------------------------------------
+  lnK1_calc = u_CO + 3*u_H2 - u_CH4 - u_H2O - 2*u_tot + lnpr2
+  lnK2_calc = u_CO + u_H2O - u_H2 - u_CO2
+
+  # Scaled residuals
+  eq1 = (lnK1_calc - lnK1)/S1
+  eq2 = (lnK2_calc - lnK2)/S2
+
+report:
+  T, P, P_ref
+  pr, lnpr2
+
+  # Decision variables
+  z1, z2
+  eps1, eps2
+
+  # Composition
+  n_CH4, n_H2O, n_CO, n_H2, n_CO2, n_tot
+  y_CH4, y_H2O, y_CO, y_H2, y_CO2, y_sum
+
+  # Log moles
+  u_CH4, u_H2O, u_CO, u_H2, u_CO2, u_tot
+  v_CH4, v_H2O, v_CO, v_H2, v_CO2, v_tot
+
+  # Thermo / equilibrium
+  dG0_1, lnK1, lnK1_calc, eq1
+  dG0_2, lnK2, lnK2_calc, eq2
+
+  # Ref-shift knobs
+  dH_CH4, dS_CH4, dH_H2O, dS_H2O, dH_CO, dS_CO, dH_H2, dS_H2, dH_CO2, dS_CO2
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 600
+  max_restarts = 2

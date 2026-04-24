@@ -1,0 +1,195 @@
+title: Klein & Nellis Example 13.4-1 — Gas Turbine Performance (Ideal-Gas via PropsSI)
+
+given:
+  # --- constants ---
+  C_to_K     = 273.15
+  atm_to_Pa  = 101325.0
+  R_u        = 8.31446261815324
+
+  # --- problem inputs (from K&N) ---
+  T_amb_C      = 20.0
+  P_amb_atm    = 1.0
+  P_c_out_atm  = 6.0
+
+  eta_c        = 0.76
+  eta_t        = 0.83
+  eta_gen      = 0.92
+  W_dot_gen_kW = 500.0
+
+  T_f_C        = 15.0
+  ea           = 3.0
+  T_ref_C      = 25.0
+
+  y_O2_air     = 0.21
+  y_N2_air     = 0.79
+
+  # standard formation enthalpies at 25C (J/mol)
+  h_form_CH4_g = -74850.0
+  h_form_O2_g  = 0.0
+  h_form_N2_g  = 0.0
+  h_form_CO2_g = -393520.0
+  h_form_H2O_g = -241826.0
+
+  # ---------- initial anchors (closer to K&N EES guesses) ----------
+  T_s_2_0      = 491.0
+  T_2_0        = 548.0
+  T_3_0        = 3000.0
+  T_s_4_0      = 800.0
+  n_dot_CH4_0  = 2.5
+
+  # ---------- balance targets (fixed zeros) ----------
+  bal_s2    = 0.0
+  bal_h2    = 0.0
+  bal_comb  = 0.0
+  bal_s4    = 0.0
+  bal_power = 0.0
+
+equations:
+  # -------------------- set states / units --------------------
+  T_1   = T_amb_C + C_to_K
+  P_1   = P_amb_atm * atm_to_Pa
+  P_2   = P_c_out_atm * atm_to_Pa
+  P_3   = P_2
+  P_4   = P_1
+
+  T_f   = T_f_C + C_to_K
+  T_ref = T_ref_C + C_to_K
+
+  W_dot_gen_req = W_dot_gen_kW * 1000.0
+
+  # -------------------- anchored unknowns --------------------
+  T_s_2     = T_s_2_0     + dT_s_2
+  T_2       = T_2_0       + dT_2
+  T_3       = T_3_0       + dT_3
+  T_s_4     = T_s_4_0     + dT_s_4
+  n_dot_CH4 = n_dot_CH4_0 + dn_dot_CH4
+
+  # -------------------- compressor (ideal gas) --------------------
+  MW_air   = PropsSI("M", "T", T_1, "P", P_1, "Air")
+
+  h_1_mass = PropsSI("Hmass_idealgas", "T", T_1, "P", P_1, "Air")
+  s_1_mass = PropsSI("Smass_idealgas", "T", T_1, "P", P_1, "Air")
+
+  h_bar_1  = h_1_mass * MW_air
+  v_bar_1  = R_u * T_1 / P_1
+
+  bal_s2 = PropsSI("Smass_idealgas", "T", T_s_2, "P", P_2, "Air") - s_1_mass
+
+  h_s_2_mass = PropsSI("Hmass_idealgas", "T", T_s_2, "P", P_2, "Air")
+  h_2_mass = h_1_mass + (h_s_2_mass - h_1_mass) / eta_c
+
+  bal_h2 = PropsSI("Hmass_idealgas", "T", T_2, "P", P_2, "Air") - h_2_mass
+
+  h_bar_2  = h_2_mass * MW_air
+  T_2_C    = T_2 - C_to_K
+
+  # -------------------- reaction stoichiometry --------------------
+  a_s  = 2.0 / y_O2_air
+  a    = (1.0 + ea) * a_s
+  b    = 1.0
+  c    = 2.0
+  d    = y_N2_air * a
+  e_O2 = y_O2_air * a - 2.0
+
+  n_tot_P = b + c + d + e_O2
+  y_CO2_P = b    / n_tot_P
+  y_H2O_P = c    / n_tot_P
+  y_N2_P  = d    / n_tot_P
+  y_O2_P  = e_O2 / n_tot_P
+
+  # -------------------- species MW --------------------
+  MW_CH4 = PropsSI("M", "T", T_ref, "P", P_1, "Methane")
+  MW_O2  = PropsSI("M", "T", T_ref, "P", P_1, "Oxygen")
+  MW_N2  = PropsSI("M", "T", T_ref, "P", P_1, "Nitrogen")
+  MW_CO2 = PropsSI("M", "T", T_ref, "P", P_1, "CarbonDioxide")
+  MW_H2O = PropsSI("M", "T", T_ref, "P", P_1, "Water")
+
+  # -------------------- combustor energy balance (solve T3) --------------------
+  HMOLAR_CH4_R   = PropsSI("Hmass_idealgas", "T", T_f,   "P", P_1, "Methane") * MW_CH4
+  HMOLAR_CH4_ref = PropsSI("Hmass_idealgas", "T", T_ref, "P", P_1, "Methane") * MW_CH4
+  h_CH4_R = h_form_CH4_g + (HMOLAR_CH4_R - HMOLAR_CH4_ref)
+
+  HMOLAR_O2_R   = PropsSI("Hmass_idealgas", "T", T_2,   "P", P_1, "Oxygen") * MW_O2
+  HMOLAR_O2_ref = PropsSI("Hmass_idealgas", "T", T_ref, "P", P_1, "Oxygen") * MW_O2
+  h_O2_R = h_form_O2_g + (HMOLAR_O2_R - HMOLAR_O2_ref)
+
+  HMOLAR_N2_R   = PropsSI("Hmass_idealgas", "T", T_2,   "P", P_1, "Nitrogen") * MW_N2
+  HMOLAR_N2_ref = PropsSI("Hmass_idealgas", "T", T_ref, "P", P_1, "Nitrogen") * MW_N2
+  h_N2_R = h_form_N2_g + (HMOLAR_N2_R - HMOLAR_N2_ref)
+
+  H_R = h_CH4_R + (y_O2_air*a)*h_O2_R + (y_N2_air*a)*h_N2_R
+
+  HMOLAR_CO2_P   = PropsSI("Hmass_idealgas", "T", T_3, "P", P_1, "CarbonDioxide") * MW_CO2
+  HMOLAR_CO2_ref = PropsSI("Hmass_idealgas", "T", T_ref, "P", P_1, "CarbonDioxide") * MW_CO2
+  h_CO2_P = h_form_CO2_g + (HMOLAR_CO2_P - HMOLAR_CO2_ref)
+
+  HMOLAR_H2O_P   = PropsSI("Hmass_idealgas", "T", T_3, "P", P_1, "Water") * MW_H2O
+  HMOLAR_H2O_ref = PropsSI("Hmass_idealgas", "T", T_ref, "P", P_1, "Water") * MW_H2O
+  h_H2O_P = h_form_H2O_g + (HMOLAR_H2O_P - HMOLAR_H2O_ref)
+
+  HMOLAR_N2_P = PropsSI("Hmass_idealgas", "T", T_3, "P", P_1, "Nitrogen") * MW_N2
+  h_N2_P = h_form_N2_g + (HMOLAR_N2_P - HMOLAR_N2_ref)
+
+  HMOLAR_O2_P = PropsSI("Hmass_idealgas", "T", T_3, "P", P_1, "Oxygen") * MW_O2
+  h_O2_P = h_form_O2_g + (HMOLAR_O2_P - HMOLAR_O2_ref)
+
+  H_P = b*h_CO2_P + c*h_H2O_P + d*h_N2_P + e_O2*h_O2_P
+  bal_comb = H_P - H_R
+  T_3_C = T_3 - C_to_K
+
+  # -------------------- turbine isentropic Ts4 via entropy (partial pressures) --------------------
+  P_CO2_3 = y_CO2_P * P_3
+  P_H2O_3 = y_H2O_P * P_3
+  P_N2_3  = y_N2_P  * P_3
+  # BOOK LISTING (matches your screenshot):
+  P_O2_3  = y_N2_P  * P_3
+  # PHYSICALLY CORRECT would be:
+  # P_O2_3  = y_O2_P  * P_3
+
+  P_CO2_4 = y_CO2_P * P_4
+  P_H2O_4 = y_H2O_P * P_4
+  P_N2_4  = y_N2_P  * P_4
+  P_O2_4  = y_O2_P  * P_4
+
+  s_CO2_P = PropsSI("Smass_idealgas", "T", T_3, "P", P_CO2_3, "CarbonDioxide") * MW_CO2
+  s_H2O_P = PropsSI("Smass_idealgas", "T", T_3, "P", P_H2O_3, "Water")         * MW_H2O
+  s_N2_P  = PropsSI("Smass_idealgas", "T", T_3, "P", P_N2_3,  "Nitrogen")      * MW_N2
+  s_O2_P  = PropsSI("Smass_idealgas", "T", T_3, "P", P_O2_3,  "Oxygen")        * MW_O2
+  S_P = b*s_CO2_P + c*s_H2O_P + d*s_N2_P + e_O2*s_O2_P
+
+  s_CO2_s4 = PropsSI("Smass_idealgas", "T", T_s_4, "P", P_CO2_4, "CarbonDioxide") * MW_CO2
+  s_H2O_s4 = PropsSI("Smass_idealgas", "T", T_s_4, "P", P_H2O_4, "Water")         * MW_H2O
+  s_N2_s4  = PropsSI("Smass_idealgas", "T", T_s_4, "P", P_N2_4,  "Nitrogen")      * MW_N2
+  s_O2_s4  = PropsSI("Smass_idealgas", "T", T_s_4, "P", P_O2_4,  "Oxygen")        * MW_O2
+  S_s4 = b*s_CO2_s4 + c*s_H2O_s4 + d*s_N2_s4 + e_O2*s_O2_s4
+
+  bal_s4 = S_s4 - S_P
+
+  HMOLAR_CO2_s4 = PropsSI("Hmass_idealgas", "T", T_s_4, "P", P_1, "CarbonDioxide") * MW_CO2
+  h_CO2_s4 = h_form_CO2_g + (HMOLAR_CO2_s4 - HMOLAR_CO2_ref)
+
+  HMOLAR_H2O_s4 = PropsSI("Hmass_idealgas", "T", T_s_4, "P", P_1, "Water") * MW_H2O
+  h_H2O_s4 = h_form_H2O_g + (HMOLAR_H2O_s4 - HMOLAR_H2O_ref)
+
+  HMOLAR_N2_s4 = PropsSI("Hmass_idealgas", "T", T_s_4, "P", P_1, "Nitrogen") * MW_N2
+  h_N2_s4 = h_form_N2_g + (HMOLAR_N2_s4 - HMOLAR_N2_ref)
+
+  HMOLAR_O2_s4 = PropsSI("Hmass_idealgas", "T", T_s_4, "P", P_1, "Oxygen") * MW_O2
+  h_O2_s4 = h_form_O2_g + (HMOLAR_O2_s4 - HMOLAR_O2_ref)
+
+  H_s4 = b*h_CO2_s4 + c*h_H2O_s4 + d*h_N2_s4 + e_O2*h_O2_s4
+  H_4 = H_P - eta_t*(H_P - H_s4)
+
+  # -------------------- power balance -> solve fuel flow --------------------
+  n_dot_air = a * n_dot_CH4
+
+  W_dot_t = n_dot_CH4 * (H_P - H_4)
+  W_dot_c = n_dot_air * (h_bar_2 - h_bar_1)
+
+  bal_power = (W_dot_t - W_dot_c) * eta_gen - W_dot_gen_req
+
+  # -------------------- requested outputs --------------------
+  V_dot_1 = n_dot_air * v_bar_1
+
+  LHV = h_form_CH4_g - 2.0*h_form_H2O_g - h_form_CO2_g
+  eta_LHV = W_dot_gen_req / (n_dot_CH4 * LHV)

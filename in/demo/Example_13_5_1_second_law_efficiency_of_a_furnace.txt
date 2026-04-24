@@ -1,0 +1,126 @@
+title: Klein & Nellis Example 13.5-1 — Second Law Efficiency of a Furnace (CH4, excess air) — TDPy
+
+given:
+  # --- universal constants ---
+  R_u = 8314.462618                 # J/(kmol*K)
+  atm_to_Pa = 101325.0              # Pa/atm
+
+  # --- inputs (from problem) ---
+  T_in   = -10.0 + 273.15           # K (dead state)
+  P_in   = 1.0*atm_to_Pa            # Pa
+  T_bldg = 22.0 + 273.15            # K (building temperature for heat transfer)
+  T_out  = 150.0 + 273.15           # K (products exit temperature)
+  P_out  = 1.0*atm_to_Pa            # Pa
+  ea_excess = 2.0                   # excess air ratio (ea in EES)
+
+  # --- fixed stoichiometry for methane: CH4 + 2 O2 -> CO2 + 2 H2O ---
+  b_s = 1.0                         # CO2 coeff (stoich)
+  c_s = 2.0                         # H2O coeff (stoich)
+
+  # stoichiometric air moles per mole fuel (air = 0.21 O2 + 0.79 N2)
+  # oxygen balance: 2*0.21*a_s = 2*b_s + c_s  => a_s = (2*b_s + c_s)/(0.42)
+  a_s = (2.0*b_s + c_s)/0.42
+  # nitrogen balance: 2*0.79*a_s = 2*d_s => d_s = 0.79*a_s
+  d_s = 0.79*a_s
+
+  # actual air (a) with excess air: a = (1+ea)*a_s
+  a = (1.0 + ea_excess)*a_s
+
+  # actual products:
+  # carbon/hydrogen: b=1, c=2
+  b = 1.0
+  c = 2.0
+  # oxygen balance: 2*0.21*a = 2*b + c + 2*e_O2  => e_O2 = (0.42*a - (2*b + c))/2
+  e_O2 = (0.42*a - (2.0*b + c))/2.0
+  # nitrogen: d = 0.79*a
+  d = 0.79*a
+
+  # --- dew point helper ---
+  y_v = c/(b + c + d + e_O2)        # mole fraction of water vapor in products (no condensation)
+  P_v = y_v*P_out                   # Pa
+
+  # --- heating values (per kmol of CH4) ---
+  # given in book: LHV=50032 kJ/kg, HHV=55516 kJ/kg
+  MW_CH4 = 16.043                   # kg/kmol
+  LHV = 50032.0e3*MW_CH4            # J/kmol
+  HHV = 55516.0e3*MW_CH4            # J/kmol
+
+  # --- exergy of fuel (given) ---
+  X_fuel = 8.331e8                  # J/kmol
+
+equations:
+  # --- dew point of products (Water) ---
+  T_dp = PropsSI("T","P",P_v,"Q",0,"Water")
+  T_dp_C = T_dp - 273.15
+
+  # --- molar enthalpies (ideal-gas species) via Cantera (J/kmol) ---
+  h_bar_CH4_in = CTPropsSI("HMOLAR","T",T_in ,"P",P_in ,"gri30.yaml|X=CH4:1")
+  h_bar_O2_in  = CTPropsSI("HMOLAR","T",T_in ,"P",P_in ,"gri30.yaml|X=O2:1")
+  h_bar_N2_in  = CTPropsSI("HMOLAR","T",T_in ,"P",P_in ,"gri30.yaml|X=N2:1")
+
+  h_bar_CO2_out = CTPropsSI("HMOLAR","T",T_out,"P",P_out,"gri30.yaml|X=CO2:1")
+  h_bar_H2O_out = CTPropsSI("HMOLAR","T",T_out,"P",P_out,"gri30.yaml|X=H2O:1")
+  h_bar_N2_out  = CTPropsSI("HMOLAR","T",T_out,"P",P_out,"gri30.yaml|X=N2:1")
+  h_bar_O2_out  = CTPropsSI("HMOLAR","T",T_out,"P",P_out,"gri30.yaml|X=O2:1")
+
+  # --- enthalpy of reactants and products per kmol of fuel ---
+  H_R = h_bar_CH4_in + 0.21*a*h_bar_O2_in + 0.79*a*h_bar_N2_in
+  H_P = b*h_bar_CO2_out + c*h_bar_H2O_out + d*h_bar_N2_out + e_O2*h_bar_O2_out
+
+  # furnace energy balance: H_R = Q_out + H_P  (Q_out is heat transferred OUT of furnace)
+  H_R = Q_out + H_P
+
+  # first-law efficiencies
+  eta_1stlaw_furnace_LHV = Q_out/LHV
+  eta_1stlaw_furnace_HHV = Q_out/HHV
+
+  # exergy of heat transfer (use dead-state temperature T_in directly; avoid extra variable)
+  X_Q_out = Q_out*(1.0 - T_in/T_bldg)
+
+  # second-law efficiency
+  eta_2ndlaw_furnace = X_Q_out/X_fuel
+
+  # convenience units
+  Q_out_MJ_per_kmol = Q_out/1000000.0
+  X_Q_out_MJ_per_kmol = X_Q_out/1000000.0
+  P_v_kPa = P_v/1000.0
+
+guesses:
+  ? Q_out = 4.0e8
+  ? X_Q_out = 2.0e8
+  ? eta_1stlaw_furnace_LHV = 0.5
+  ? eta_1stlaw_furnace_HHV = 0.45
+  ? eta_2ndlaw_furnace = 0.25
+  ? T_dp = 300.0
+
+report:
+  # inputs
+  T_in, P_in, T_bldg, T_out, P_out
+  ea_excess
+
+  # reaction coefficients
+  a_s, d_s
+  a, b, c, d, e_O2
+
+  # dew point
+  y_v, P_v_kPa
+  T_dp, T_dp_C
+
+  # energy / efficiencies
+  H_R, H_P
+  Q_out, Q_out_MJ_per_kmol
+  LHV, HHV
+  eta_1stlaw_furnace_LHV
+  eta_1stlaw_furnace_HHV
+
+  # exergy / second law
+  X_Q_out, X_Q_out_MJ_per_kmol
+  X_fuel
+  eta_2ndlaw_furnace
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 800
+  max_restarts = 2

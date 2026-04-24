@@ -1,0 +1,52 @@
+title: Klein & Nellis Example 15.5-1 — Absolute Entropy (Sackur–Tetrode) — Cantera check (Argon)
+
+given:
+  # -------------------- Inputs --------------------
+  # We'll use Argon here because Cantera ships an 'air.yaml' phase that includes AR.
+  gas   = AR                 # Cantera species name in air.yaml is 'AR' (uppercase)
+  mech  = air.yaml           # Cantera input file
+  phase = air               # Phase name inside air.yaml
+  T     = 300.0             # K
+  P_atm = 1.0               # atm
+
+  # -------------------- Constants --------------------
+  atm_to_Pa = 101325.0       # Pa/atm
+  R_u  = 8.31446261815324    # J/mol-K
+  NA   = 6.02214076e23       # 1/mol
+  kB   = 1.380649e-23        # J/K
+  h    = 6.62607015e-34      # J*s
+
+  P = P_atm * atm_to_Pa      # Pa
+
+equations:
+  # -------- Cantera properties (requires CTPropsSI support in TDPy) --------
+  # Composition string, e.g. "AR:1" for pure argon
+  comp = gas + ":1"
+
+  # Mean molecular weight [kg/mol] from Cantera
+  MW = CTPropsSI("M", mech, phase, comp, T, P)
+
+  # Cantera absolute molar entropy [J/mol-K]
+  s_bar_CT = CTPropsSI("SMOLAR", mech, phase, comp, T, P)
+
+  # -------- Sackur–Tetrode (absolute) --------
+  m  = MW / NA                               # kg/particle
+  arg = (kB*T/P) * (2*pi*m*kB*T/(h^2))^(3/2)
+  s_bar_ST = R_u * ( ln(arg) + 5/2 )
+
+  # Differences
+  ds      = s_bar_ST - s_bar_CT
+  rel_pct = 100*ds/s_bar_CT
+
+report:
+  mech, phase, gas, comp
+  T, P
+  MW, m
+  s_bar_ST, s_bar_CT
+  ds, rel_pct
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 40

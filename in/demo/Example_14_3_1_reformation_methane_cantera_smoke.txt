@@ -1,0 +1,47 @@
+title: CTPropsSI Smoke Test — Cantera backend sanity check
+
+given:
+  # Simple thermodynamic state
+  T = 1100.0        # K
+  P = 101325.0      # Pa
+
+  # Pure-species "fluid" specs for Cantera (mechanism|composition)
+  spec_CH4 = "gri30.yaml|X=CH4:1"
+  spec_H2O = "gri30.yaml|X=H2O:1"
+
+guess:
+  # Just give nonzero guesses so SciPy starts cleanly
+  ct_ok  = 1.0
+
+  h_CH4 = 0.0
+  s_CH4 = 0.0
+  g_CH4 = 0.0
+
+  h_H2O = 0.0
+  s_H2O = 0.0
+  g_H2O = 0.0
+
+equations:
+  # If Cantera isn't installed / importable, this should fail fast with a clear error.
+  ct_ok = cantera_available()
+
+  # Molar properties (Cantera convention): J/kmol, J/kmol/K
+  h_CH4 = CTPropsSI("HMOLAR","T",T,"P",P, spec_CH4)
+  s_CH4 = CTPropsSI("SMOLAR","T",T,"P",P, spec_CH4)
+  g_CH4 = CTPropsSI("GMOLAR","T",T,"P",P, spec_CH4)
+
+  h_H2O = CTPropsSI("HMOLAR","T",T,"P",P, spec_H2O)
+  s_H2O = CTPropsSI("SMOLAR","T",T,"P",P, spec_H2O)
+  g_H2O = CTPropsSI("GMOLAR","T",T,"P",P, spec_H2O)
+
+report:
+  ct_ok
+  T, P
+  h_CH4, s_CH4, g_CH4
+  h_H2O, s_H2O, g_H2O
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-12
+  max_iter = 30

@@ -1,0 +1,151 @@
+title: Klein & Nellis Example 13.3-3 (Part a only) — Conventional furnace efficiency (humid air + HHV)
+
+given:
+  P_atm      = 1.0
+
+  T_ng_in_C  = 10.0
+  y_ng_CH4   = 0.94
+  y_ng_N2    = 0.05
+  y_ng_H2O   = 0.01
+
+  T_a_in_C   = 25.0
+  phi_a_in   = 0.60
+  ExcessAir  = 0.50
+
+  T_out_C    = 175.0
+
+  C_to_K     = 273.15
+  atm_to_Pa  = 101325.0
+  kJ_to_MJ   = 0.001
+
+  h_form_CH4_g = -74850.0
+  h_form_CO2_g = -393520.0
+  h_form_H2O_g = -241826.0
+  h_form_H2O_l = -285813.0
+
+guess:
+  omega_a_in = 0.010
+  w          = 0.015
+
+  a_s = 10.0
+  c_s = 2.0
+  d_s = 8.0
+
+  a = 15.0
+  c = 2.0
+  d = 12.0
+  e_O2 = 2.0
+
+  Q_out_conv = 6.8e5
+  HHV        = 8.4e5
+  eta_conv   = 0.82
+  T_dp_out   = 330.0
+
+equations:
+  P      = P_atm * atm_to_Pa
+  T_ng_in= T_ng_in_C + C_to_K
+  T_a_in = T_a_in_C + C_to_K
+  T_out  = T_out_C + C_to_K
+  T_ref  = 25.0 + C_to_K
+
+  P_sat_a_in = PropsSI("P","T",T_a_in,"Q",0,"Water")
+  P_v_a_in   = phi_a_in * P_sat_a_in
+  omega_a_in = HAPropsSI("W","T",T_a_in,"P",P,"R",phi_a_in)
+
+  MW_da = PropsSI("M","T",T_a_in,"P",P,"Air")
+  MW_v  = PropsSI("M","T",T_a_in,"P",P,"Water")
+  w     = omega_a_in * MW_da / MW_v
+
+  b_s = y_ng_CH4
+  4*y_ng_CH4 + 2*y_ng_H2O + a_s*2*w = 2*c_s
+  y_ng_H2O + a_s*2*0.21 + a_s*w     = 2*b_s + c_s
+  2*y_ng_N2 + a_s*2*0.79            = 2*d_s
+
+  a = (1+ExcessAir)*a_s
+  b = y_ng_CH4
+  4*y_ng_CH4 + 2*y_ng_H2O + a*2*w = 2*c
+  y_ng_H2O + a*2*0.21 + a*w       = 2*b + c + 2*e_O2
+  2*y_ng_N2 + a*2*0.79            = 2*d
+
+  P_v_ng_in    = y_ng_H2O * P
+  P_sat_ref    = PropsSI("P","T",T_ref,"Q",0,"Water")
+
+  HMOLAR_CH4      = PropsSI("HMOLAR","T",T_ng_in,"P",P,"Methane")
+  HMOLAR_CH4_ref  = PropsSI("HMOLAR","T",T_ref,"P",P,"Methane")
+  h_CH4_ng_in   = h_form_CH4_g + (HMOLAR_CH4 - HMOLAR_CH4_ref)
+
+  HMOLAR_N2_ng    = PropsSI("HMOLAR","T",T_ng_in,"P",P,"Nitrogen")
+  HMOLAR_N2_ref   = PropsSI("HMOLAR","T",T_ref,"P",P,"Nitrogen")
+  h_N2_ng_in    = (HMOLAR_N2_ng - HMOLAR_N2_ref)
+
+  HMOLAR_H2O_ng     = PropsSI("HMOLAR","T",T_ng_in,"P",P_v_ng_in,"Water")
+
+  # saturated vapor enthalpy at T_ref
+
+  HMOLAR_H2O_g_ref = PropsSI("HMOLAR","T",T_ref,"Q",1,"Water")
+
+  h_H2O_ng_in     = h_form_H2O_g + (HMOLAR_H2O_ng - HMOLAR_H2O_g_ref)
+
+  HMOLAR_O2_a     = PropsSI("HMOLAR","T",T_a_in,"P",P,"Oxygen")
+  HMOLAR_O2_ref   = PropsSI("HMOLAR","T",T_ref,"P",P,"Oxygen")
+  h_O2_a_in     = (HMOLAR_O2_a - HMOLAR_O2_ref)
+
+  HMOLAR_N2_a     = PropsSI("HMOLAR","T",T_a_in,"P",P,"Nitrogen")
+  h_N2_a_in     = (HMOLAR_N2_a - HMOLAR_N2_ref)
+
+  HMOLAR_H2O_a    = PropsSI("HMOLAR","T",T_a_in,"P",P_v_a_in,"Water")
+  h_H2O_a_in    = h_form_H2O_g + (HMOLAR_H2O_a - HMOLAR_H2O_g_ref)
+
+  H_R = (y_ng_CH4*h_CH4_ng_in + y_ng_N2*h_N2_ng_in + y_ng_H2O*h_H2O_ng_in + a*(0.21*h_O2_a_in + 0.79*h_N2_a_in + w*h_H2O_a_in))
+
+  P_v_out    = c*P/(b + c + d + e_O2)
+  T_dp_out   = PropsSI("T","P",P_v_out,"Q",0,"Water")
+  T_dp_out_C = T_dp_out - C_to_K
+
+  HMOLAR_CO2_out   = PropsSI("HMOLAR","T",T_out,"P",P,"CarbonDioxide")
+  HMOLAR_CO2_ref   = PropsSI("HMOLAR","T",T_ref,"P",P,"CarbonDioxide")
+  h_CO2_out      = h_form_CO2_g + (HMOLAR_CO2_out - HMOLAR_CO2_ref)
+
+  HMOLAR_N2_out    = PropsSI("HMOLAR","T",T_out,"P",P,"Nitrogen")
+  h_N2_out       = (HMOLAR_N2_out - HMOLAR_N2_ref)
+
+  HMOLAR_O2_out    = PropsSI("HMOLAR","T",T_out,"P",P,"Oxygen")
+  h_O2_out       = (HMOLAR_O2_out - HMOLAR_O2_ref)
+
+  HMOLAR_H2O_out   = PropsSI("HMOLAR","T",T_out,"P",P_v_out,"Water")
+  h_H2O_g_out    = h_form_H2O_g + (HMOLAR_H2O_out - HMOLAR_H2O_g_ref)
+
+  H_P = (b*h_CO2_out + c*h_H2O_g_out + d*h_N2_out + e_O2*h_O2_out)
+  Q_out_conv = H_R - H_P
+
+  4*y_ng_CH4 + 2*y_ng_H2O        = 2*c_s_da
+  y_ng_H2O + a_s_da*2*0.21       = 2*y_ng_CH4 + c_s_da
+  2*y_ng_N2 + a_s_da*2*0.79      = 2*d_s_da
+
+  H_R_ref = (y_ng_CH4*h_form_CH4_g + y_ng_H2O*h_form_H2O_g)
+  H_P_ref = (y_ng_CH4*h_form_CO2_g + c_s_da*h_form_H2O_l)
+  HHV     = H_R_ref - H_P_ref
+
+  eta_conv = Q_out_conv / HHV
+  HHV_MJkmol        = HHV * kJ_to_MJ
+  Q_out_conv_MJkmol = Q_out_conv * kJ_to_MJ
+
+report:
+  P
+  T_ng_in, T_a_in, T_out
+  y_ng_CH4, y_ng_N2, y_ng_H2O
+  phi_a_in, ExcessAir
+  omega_a_in
+  w
+  a_s, b_s, c_s, d_s
+  a, b, c, d, e_O2
+  T_dp_out_C
+  Q_out_conv_MJkmol
+  HHV_MJkmol
+  eta_conv
+
+solve:
+  backend = scipy
+  method  = hybr
+  tol     = 1e-8
+  max_iter= 120

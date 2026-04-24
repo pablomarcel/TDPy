@@ -1,0 +1,58 @@
+title: CTPropsSI Cache Probe — repeated calls should be fast after memoization
+
+given:
+  T = 1100.0     # K
+  P = 101325.0   # Pa
+
+  spec_CH4 = "gri30.yaml|X=CH4:1"
+  spec_H2  = "gri30.yaml|X=H2:1"
+
+guess:
+  # Nonzero guesses
+  g1 = -3.0e8
+  g2 = -3.0e8
+  g3 = -3.0e8
+  g4 = -3.0e8
+  g5 = -3.0e8
+  g6 = -3.0e8
+  g7 = -3.0e8
+  g8 = -3.0e8
+  g9 = -3.0e8
+  g10 = -3.0e8
+
+  h1 = 0.0
+  h2 = 0.0
+  h3 = 0.0
+  h4 = 0.0
+  h5 = 0.0
+
+equations:
+  # 10 identical GMOLAR calls (same args) — after first one, the rest should be cache hits
+  g1  = CTPropsSI("GMOLAR","T",T,"P",P, spec_CH4)
+  g2  = CTPropsSI("GMOLAR","T",T,"P",P, spec_CH4)
+  g3  = CTPropsSI("GMOLAR","T",T,"P",P, spec_CH4)
+  g4  = CTPropsSI("GMOLAR","T",T,"P",P, spec_CH4)
+  g5  = CTPropsSI("GMOLAR","T",T,"P",P, spec_CH4)
+  g6  = CTPropsSI("GMOLAR","T",T,"P",P, spec_CH4)
+  g7  = CTPropsSI("GMOLAR","T",T,"P",P, spec_CH4)
+  g8  = CTPropsSI("GMOLAR","T",T,"P",P, spec_CH4)
+  g9  = CTPropsSI("GMOLAR","T",T,"P",P, spec_CH4)
+  g10 = CTPropsSI("GMOLAR","T",T,"P",P, spec_CH4)
+
+  # 5 identical HMOLAR calls (same args) — again should be cache hits
+  h1 = CTPropsSI("HMOLAR","T",T,"P",P, spec_H2)
+  h2 = CTPropsSI("HMOLAR","T",T,"P",P, spec_H2)
+  h3 = CTPropsSI("HMOLAR","T",T,"P",P, spec_H2)
+  h4 = CTPropsSI("HMOLAR","T",T,"P",P, spec_H2)
+  h5 = CTPropsSI("HMOLAR","T",T,"P",P, spec_H2)
+
+report:
+  T, P
+  g1, g10
+  h1, h5
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-12
+  max_iter = 30

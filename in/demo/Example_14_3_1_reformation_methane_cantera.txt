@@ -1,0 +1,135 @@
+title: Klein & Nellis Example 14.3-1 (Reformation of Methane) — CTPropsSI (Cantera), robust + consistent (no warm-start "assignment" drift)
+
+given:
+  # Inputs (book basis: kmol, SI)
+  n0_CH4 = 2.0          # kmol
+  n0_H2O = 3.0          # kmol
+  n0_CO2 = 1.0          # kmol
+  T      = 1100.0       # K
+  P_bar  = 10.0         # bar
+  P      = P_bar * 1e5  # Pa
+
+  # Reference pressure for standard-state Gibbs energies
+  P_ref  = 101325.0     # Pa
+
+  # Universal gas constant (J/(kmol*K))
+  R_u    = 8314.462618
+
+  # Guard to avoid ln(0) during iterations
+  eps_a  = 1e-30
+
+guess:
+  # Extents (kmol) — keep n_i positive
+  e1 = 1.2
+  e2 = 0.2
+
+  # Reasonable initial guesses for amounts (kmol)
+  n_CH4 = 0.8
+  n_H2O = 2.0
+  n_CO  = 1.4
+  n_H2  = 3.4
+  n_CO2 = 0.8
+  n_tot = 8.4
+
+  # Mole fractions
+  y_CH4 = 0.10
+  y_H2O = 0.24
+  y_CO  = 0.17
+  y_H2  = 0.40
+  y_CO2 = 0.09
+
+  # Activities
+  a_CH4 = 1.0
+  a_H2O = 2.0
+  a_CO  = 2.0
+  a_H2  = 4.0
+  a_CO2 = 1.0
+
+  # Thermo / equilibrium log constants
+  gbar0_CH4 = -3.0e8
+  gbar0_H2O = -4.5e8
+  gbar0_CO  = -3.4e8
+  gbar0_H2  = -1.6e8
+  gbar0_CO2 = -6.5e8
+  dG0_1 = -5.0e7
+  dG0_2 = -1.0e5
+  L1 = 5.0
+  L2 = 0.01
+  K1 = 300.0
+  K2 = 1.01
+
+equations:
+  # ----------------------------
+  # IMPORTANT NOTE
+  # We write definitional relations as "0 = ..." (not "lhs = rhs")
+  # to prevent any solver-side "assignment warm-start" logic from
+  # dropping them as constraints and letting derived vars drift.
+  # ----------------------------
+
+  # Stoichiometry via extents
+  0 = n_CH4 - (n0_CH4 - e1)
+  0 = n_H2O - (n0_H2O - e1 + e2)
+  0 = n_CO  - (0.0   + e1 + e2)
+  0 = n_H2  - (0.0   + 3.0*e1 - e2)
+  0 = n_CO2 - (n0_CO2 - e2)
+
+  # Total moles
+  0 = n_tot - (n_CH4 + n_H2O + n_CO + n_H2 + n_CO2)
+
+  # Mole fractions
+  0 = y_CH4 - (n_CH4 / n_tot)
+  0 = y_H2O - (n_H2O / n_tot)
+  0 = y_CO  - (n_CO  / n_tot)
+  0 = y_H2  - (n_H2  / n_tot)
+  0 = y_CO2 - (n_CO2 / n_tot)
+
+  # Activities (ideal-gas)
+  0 = a_CH4 - (y_CH4 * P / P_ref + eps_a)
+  0 = a_H2O - (y_H2O * P / P_ref + eps_a)
+  0 = a_CO  - (y_CO  * P / P_ref + eps_a)
+  0 = a_H2  - (y_H2  * P / P_ref + eps_a)
+  0 = a_CO2 - (y_CO2 * P / P_ref + eps_a)
+
+  # Standard-state molar Gibbs energies at (T, P_ref) (J/kmol)
+  0 = gbar0_CH4 - CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=CH4:1")
+  0 = gbar0_H2O - CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=H2O:1")
+  0 = gbar0_CO  - CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=CO:1")
+  0 = gbar0_H2  - CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=H2:1")
+  0 = gbar0_CO2 - CTPropsSI("GMOLAR","T",T,"P",P_ref, "gri30.yaml|X=CO2:1")
+
+  # Standard Gibbs free energy changes (J/kmol)
+  0 = dG0_1 - ((-1.0)*gbar0_CH4 + (-1.0)*gbar0_H2O + (1.0)*gbar0_CO + (3.0)*gbar0_H2)
+  0 = dG0_2 - ((1.0)*gbar0_H2O + (1.0)*gbar0_CO + (-1.0)*gbar0_H2 + (-1.0)*gbar0_CO2)
+
+  # ln(K) from ΔG° = -R_u*T*ln(K)
+  0 = L1 - (-dG0_1 / (R_u*T))
+  0 = L2 - (-dG0_2 / (R_u*T))
+
+  # Define K for reporting (no exp(L1) report hacks)
+  0 = K1 - exp(L1)
+  0 = K2 - exp(L2)
+
+  # Mass-action equilibrium constraints in log-form:
+  #   ln(K) = Σ ν_i ln(a_i)
+  0 = ((-1.0)*ln(a_CH4) + (-1.0)*ln(a_H2O) + (1.0)*ln(a_CO) + (3.0)*ln(a_H2)) - L1
+  0 = ((1.0)*ln(a_H2O) + (1.0)*ln(a_CO) + (-1.0)*ln(a_H2) + (-1.0)*ln(a_CO2)) - L2
+
+report:
+  T, P_bar, P, P_ref
+
+  e1, e2
+
+  n_CH4, n_H2O, n_CO, n_H2, n_CO2, n_tot
+  y_CH4, y_H2O, y_CO, y_H2, y_CO2
+  a_CH4, a_H2O, a_CO, a_H2, a_CO2
+
+  gbar0_CH4, gbar0_H2O, gbar0_CO, gbar0_H2, gbar0_CO2
+  dG0_1, dG0_2
+  L1, L2
+  K1, K2
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 200

@@ -1,0 +1,90 @@
+title: Klein & Nellis Example 14.2-1 — Reaction Coordinates for Simultaneous Reactions (unrolled for TDPy)
+
+given:
+  # -------------------- initial amounts (kmol) --------------------
+  n0_CH4 = 2.0
+  n0_H2O = 3.0
+  n0_CO  = 0.0
+  n0_H2  = 0.0
+  n0_CO2 = 1.0
+
+  # -------------------- stoichiometric coefficients nu[i,r] --------------------
+  # Reaction 1:  CH4 + H2O -> CO + 3 H2
+  nu_CH4_1 = -1.0
+  nu_H2O_1 = -1.0
+  nu_CO_1  =  1.0
+  nu_H2_1  =  3.0
+  nu_CO2_1 =  0.0
+
+  # Reaction 2:  CO2 + H2 -> CO + H2O   (reverse water-gas shift, as coded in the book)
+  nu_CH4_2 =  0.0
+  nu_H2O_2 =  1.0
+  nu_CO_2  =  1.0
+  nu_H2_2  = -1.0
+  nu_CO2_2 = -1.0
+
+  # -------------------- reaction coordinates (kmol) --------------------
+  # In the EES example these are manipulated via a Parametric Table and Max/Min window.
+  # In TDPy (text-only) we treat them as "inputs" by solving eps1=eps1_set and eps2=eps2_set.
+  eps1_set = 0.0   # reaction coordinate for reaction 1 (kmol)
+  eps2_set = 0.0   # reaction coordinate for reaction 2 (kmol)
+
+  # Small epsilon for safe divisions if you ever push eps1/eps2 into weird ranges
+  EPS = 1e-12
+
+guess:
+  # Start from the initial mixture (eps1=eps2=0)
+  eps1 = 0.0
+  eps2 = 0.0
+
+  n_CH4 = 2.0
+  n_H2O = 3.0
+  n_CO  = 0.0
+  n_H2  = 0.0
+  n_CO2 = 1.0
+  n_tot = 6.0
+
+  y_CH4 = 0.3333333333
+  y_H2O = 0.5
+  y_CO  = 0.0
+  y_H2  = 0.0
+  y_CO2 = 0.1666666667
+  y_sum = 1.0
+
+equations:
+  # -------------------- "inputs" for reaction coordinates --------------------
+  eps1 = eps1_set
+  eps2 = eps2_set
+
+  # -------------------- mole balances (unrolled duplicate + sum) --------------------
+  n_CH4 = n0_CH4 + nu_CH4_1*eps1 + nu_CH4_2*eps2
+  n_H2O = n0_H2O + nu_H2O_1*eps1 + nu_H2O_2*eps2
+  n_CO  = n0_CO  + nu_CO_1*eps1  + nu_CO_2*eps2
+  n_H2  = n0_H2  + nu_H2_1*eps1  + nu_H2_2*eps2
+  n_CO2 = n0_CO2 + nu_CO2_1*eps1 + nu_CO2_2*eps2
+
+  # total moles (unrolled sum)
+  n_tot = n_CH4 + n_H2O + n_CO + n_H2 + n_CO2
+
+  # -------------------- mole fractions (unrolled duplicate) --------------------
+  y_CH4 = n_CH4/(n_tot + EPS)
+  y_H2O = n_H2O/(n_tot + EPS)
+  y_CO  = n_CO/(n_tot + EPS)
+  y_H2  = n_H2/(n_tot + EPS)
+  y_CO2 = n_CO2/(n_tot + EPS)
+
+  # diagnostic (should be ~1)
+  y_sum = y_CH4 + y_H2O + y_CO + y_H2 + y_CO2
+
+report:
+  eps1_set, eps2_set
+  eps1, eps2
+  n_CH4, n_H2O, n_CO, n_H2, n_CO2, n_tot
+  y_CH4, y_H2O, y_CO, y_H2, y_CO2, y_sum
+  y_H2   # (this is y[4] in the book; target for later maximization)
+
+solve:
+  backend = scipy
+  method = hybr
+  tol = 1e-10
+  max_iter = 60
