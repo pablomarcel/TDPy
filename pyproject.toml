@@ -1,0 +1,134 @@
+# pyproject.toml
+[project]
+name = "tdpy"
+version = "0.1.0"
+description = "Python-first thermodynamics, property evaluation, nonlinear equation solving, optimization, and engineering analysis workflows."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+  { name = "Pablo Marcel Montijo" },
+]
+keywords = [
+  "thermodynamics",
+  "equation-solver",
+  "nonlinear-solver",
+  "optimization",
+  "engineering",
+  "scientific-computing",
+  "property-calculations",
+  "coolprop",
+  "dearpygui",
+]
+dependencies = [
+  "numpy",
+  "scipy",
+  "sympy",
+  "pyyaml",
+  "plotly",
+]
+
+[project.optional-dependencies]
+docs = [
+  "sphinx==8.2.3",
+  "furo",
+]
+dev = [
+  "pytest>=8",
+  "pytest-xdist",
+  "pytest-cov",
+  "sphinx==8.2.3",
+  "furo",
+]
+gui = [
+  "dearpygui",
+]
+menu = [
+  "pyfiglet",
+]
+equations = [
+  "gekko",
+]
+thermo = [
+  "CoolProp",
+]
+cantera = [
+  "cantera",
+]
+all = [
+  "dearpygui",
+  "pyfiglet",
+  "gekko",
+  "CoolProp",
+  "cantera",
+  "sphinx==8.2.3",
+  "furo",
+]
+
+[project.urls]
+Homepage = "https://github.com/pablomarcel/tdpy"
+Documentation = "https://pablomarcel.github.io/tdpy/"
+
+[project.scripts]
+tdpy = "cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# Root-layout project.
+#
+# TDPy currently exposes top-level modules such as:
+#   cli.py, app.py, apis.py, core.py, design.py, in_out.py, units.py, utils.py
+#
+# It also exposes package directories such as:
+#   equations/, interpreter/, thermo_props/
+#
+# Note:
+#   The repository also contains a units/ directory, while the current stable
+#   runtime imports the top-level units.py module. To avoid an import-name
+#   collision, this pyproject packages the top-level units.py module and does
+#   not force the units/ directory as an installable package.
+include-package-data = true
+py-modules = [
+  "apis",
+  "app",
+  "cli",
+  "core",
+  "design",
+  "gui_core_dpg",
+  "gui_log_dpg",
+  "gui_utils_dpg",
+  "in_out",
+  "main",
+  "units",
+  "utils",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+  "equations",
+  "equations.*",
+  "interpreter",
+  "interpreter.*",
+  "thermo_props",
+  "thermo_props.*",
+]
+exclude = [
+  "**/tests*",
+  "**/__pycache__*",
+  "docs*",
+  "in*",
+  "out*",
+]
+
+[tool.pytest.ini_options]
+testpaths = [
+  "tests",
+  "equations/tests",
+  "interpreter/tests",
+  "thermo_props/tests",
+]
+addopts = "-ra"

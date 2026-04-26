@@ -7,21 +7,25 @@ Outputs default to `out/`.
 ## 0) Help
 
 ```bash
-python -m cli --help
+python -m cli \
+  --help
 ```
 
 Per-command help:
 
 ```bash
-python -m cli run --help
+python -m cli run \
+  --help
 ```
 
 ```bash
-python -m cli props --help
+python -m cli props \
+  --help
 ```
 
 ```bash
-python -m cli eqn --help
+python -m cli eqn \
+  --help
 ```
 
 ## 1) Text UI (console front-end)
@@ -49,7 +53,8 @@ python -m cli list-inputs
 To print absolute paths for copy/paste:
 
 ```bash
-python -m cli list-inputs --verbose
+python -m cli list-inputs \
+  --verbose
 ```
 
 ## 3) Nozzle (ideal gas, quasi-1D isentropic)
@@ -607,3 +612,10 @@ python sandbox/cantera_reformation_methane.py \
 ```bash
 python -m gui_core_dpg
 ```
+
+### Sphinx commands
+
+python -m cli sphinx-skel docs
+python -m sphinx -b html docs docs/_build/html
+open docs/_build/html/index.html
+sphinx-autobuild docs docs/_build/html
