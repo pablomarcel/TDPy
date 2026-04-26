@@ -1,53 +1,50 @@
 # design.py
 from __future__ import annotations
 
-"""
-design
+"""Problem-specification builders for TDPy.
 
-Build "spec" objects from input mappings (JSON/YAML/TXT) in a way that is:
-- CLI-friendly (file paths resolved relative to the input file directory)
-- GUI-friendly (explicit, typed specs where it matters)
-- Extensible via a registry of builders per `problem_type`
+This module converts input mappings from JSON, YAML, or TXT files into the
+typed or mapping-like objects consumed by the application service.
 
-Current supported problem_type values:
-- "nozzle_ideal"   -> NozzleProfileSpec (core solver)
-- "thermo_props"   -> mapping-like spec (CoolProp backend)
-- "equations"      -> mapping-like spec consumed by equations.api.solve_system()
-- "optimize"       -> mapping-like spec consumed by equations.api.solve_system() (routes to optimizer)
+Design goals
+------------
+The builders are intentionally lightweight and conservative:
 
-IMPORTANT (stability goals):
-- Keep imports light: do NOT import SciPy/GEKKO/CoolProp here.
-- Preserve *stable* output shape for equations problems:
-    * build_equations MUST return a Mapping compatible with equations.spec.system_from_mapping()
-      and MUST NOT add new top-level keys that older code paths might not expect.
-      (In particular: do NOT add a top-level "solve" key for equations specs.)
-- Be liberal in what we accept:
-    * equations inputs may use "constants" instead of "params"
-    * variables may be a mapping OR list form
-- thermo_props inputs may use:
-    * single: {"state": {...}, "outputs": [...]}
-    * batch:  {"states": [{...flat props...}, {...}], "outputs": [...]}
-    * legacy: {"given": {...}, "ask": [...]}
-  so we normalize to {"states":[{"id":..,"given":..,"ask":[...]}], ...}.
-- optimize inputs follow the same normalization rules as equations, but add:
-    * objective: "<expr>" and sense: "min"|"max"
-    * constraints: ["eq1", "eq2", ...] and/or constraints_file
-    * design_vars: ["x","y",...] (optional)
-  These are passed through so equations/api can route to the optimizer backend.
+* File paths are resolved relative to the input file directory.
+* GUI and CLI flows share the same builder layer.
+* Heavy optional dependencies such as SciPy, GEKKO, and CoolProp are not
+  imported here.
+* Existing equation-system behavior is preserved for older input files.
 
-Notes (why prior upgrades broke existing solves):
-- Existing (stable) pipelines relied on build_equations returning a mapping without a top-level
-  "solve" key and without interpreting nested "solve" blocks.
-- Some newer mappings coming from GUIs may include a "solve" block; if we forward it for equations
-  we can change behavior in older code. Therefore:
-    * equations builder stays stable (top-level keys only, solve copied into meta for UI/debug).
-    * optimize builder may interpret nested solve and copy into top-level fields, because optimize
-      routing does not go through equations.spec.system_from_mapping().
+Supported problem types
+-----------------------
+``"nozzle_ideal"``
+    Builds a ``NozzleProfileSpec`` for the ideal-gas nozzle solver.
+
+``"thermo_props"``
+    Builds a normalized mapping consumed by the thermodynamic-property API.
+
+``"equations"``
+    Builds a stable mapping consumed by ``equations.api.solve_system``.
+
+``"optimize"``
+    Builds an optimization mapping routed through the equations/optimizer
+    facade.
+
+Compatibility notes
+-------------------
+Existing equation pipelines rely on ``build_equations`` returning a mapping
+without adding a top-level ``"solve"`` key. Some GUI-generated inputs may
+contain a nested ``"solve"`` block; the equations builder stores that
+information in ``meta`` for debugging but keeps the stable top-level shape.
+
+Optimization inputs may interpret nested solve settings because they do not go
+through the older ``equations.spec.system_from_mapping`` path in the same way.
 """
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional
 
 from apis import ProblemSpec
 from core import NozzleProfileSpec
@@ -65,12 +62,10 @@ except Exception:  # pragma: no cover
 
 
 class AttrDict(dict):
-    """
-    dict that also supports attribute access:
-      d["backend"] == d.backend
+    """Dictionary that also supports attribute access.
 
-    Useful because app.py uses getattr(spec, "backend", ...) and many backends
-    prefer Mapping-like payloads.
+    This is useful because some application code uses ``getattr(spec, ...)``
+    while backend code often expects mapping-like payloads.
     """
 
     def __getattr__(self, name: str) -> Any:
@@ -117,9 +112,10 @@ def _strip_or_none(x: Any) -> Optional[str]:
 
 
 def _clean_equation_line(raw: str) -> Optional[str]:
-    """
-    Normalize a single equation line (for .txt files).
-    Supports comments (#, !, //) and blank lines.
+    """Normalize one equation line from a text file.
+
+    Blank lines and comment-only lines are ignored. Inline comments introduced
+    by ``#``, ``!``, or ``//`` are stripped.
     """
     line = (raw or "").strip()
     if not line:
@@ -145,13 +141,11 @@ def _read_equations_lines(path: Path) -> List[str]:
 
 
 def _coerce_float(x: Any, *, default_unit: str | None = None, to_unit: str | None = None) -> float:
-    """
-    Accept:
-      - int/float
-      - numeric strings: "123.4"
-      - unit strings: "300 K", "14.7 psi", "70[kJ/kg]"
+    """Convert a number-like value to ``float``.
 
-    If units.py is available, unit strings are parsed; otherwise we fall back to float().
+    Accepted values include integers, floats, numeric strings, and unit strings
+    such as ``"300 K"``, ``"14.7 psi"``, or ``"70[kJ/kg]"`` when the optional
+    unit parser is available.
     """
     if isinstance(x, (int, float)):
         return float(x)
@@ -171,12 +165,11 @@ def _coerce_float(x: Any, *, default_unit: str | None = None, to_unit: str | Non
 
 
 def _coerce_param_value(x: Any) -> Any:
-    """
-    Coerce a "constant/param" value.
+    """Coerce a constant or parameter value.
 
-    Rules:
-    - If it looks numeric (including units), return float.
-    - Otherwise keep as-is (e.g., fluid name "Nitrogen").
+    Numeric values, including unit-bearing numeric strings when units support is
+    available, are converted to ``float``. Non-numeric strings and other
+    JSON-safe values are kept as-is.
     """
     if x is None:
         return None
@@ -189,20 +182,17 @@ def _coerce_param_value(x: Any) -> Any:
         s = x.strip()
         if not s:
             return s
-        # Try units parsing first (can parse plain numbers too)
         if parse_quantity is not None:
             try:
                 q = parse_quantity(s, default_unit=None, to_unit=None)
                 return float(q.value)
             except Exception:
                 pass
-        # Try plain float
         try:
             return float(s)
         except Exception:
             return s
 
-    # Best-effort: keep other JSON-safe types
     return x
 
 
@@ -218,13 +208,7 @@ def _normalize_backend(x: Any) -> str:
 
 
 def _solve_dict(data: Mapping[str, Any]) -> Mapping[str, Any]:
-    """
-    Best-effort solve-block extraction (used for optimize only).
-
-    Supports:
-      - top-level "solve": {...}
-      - legacy: "solver": {...}
-    """
+    """Extract a nested solve-options mapping if one is present."""
     s = data.get("solve", None)
     if isinstance(s, Mapping):
         return s
@@ -235,9 +219,7 @@ def _solve_dict(data: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _pick_solve_opt(data: Mapping[str, Any], solve: Mapping[str, Any], key: str, default: Any) -> Any:
-    """
-    Prefer an explicit top-level key; otherwise fall back to nested solve dict.
-    """
+    """Prefer a top-level option and otherwise fall back to the solve block."""
     if key in data and data.get(key) is not None:
         return data.get(key)
     if key in solve and solve.get(key) is not None:
@@ -266,6 +248,8 @@ def register(problem_type: str):
 
 @dataclass(frozen=True)
 class EqVar:
+    """Legacy equation-variable container kept for backward compatibility."""
+
     name: str
     kind: str  # "unknown" or "fixed"
     value: float | None
@@ -278,6 +262,8 @@ class EqVar:
 
 @dataclass(frozen=True)
 class EquationsSolveSpec:
+    """Legacy equation-solve container kept for backward compatibility."""
+
     equations: List[str]
     variables: List[EqVar]
     params: Dict[str, Any] = field(default_factory=dict)
@@ -297,6 +283,7 @@ class EquationsSolveSpec:
 @register("nozzle_ideal")
 @with_error_context("build:nozzle_ideal")
 def build_nozzle_ideal(data: Mapping[str, Any], base_dir: Path) -> NozzleProfileSpec:
+    """Build the ideal-gas nozzle profile specification."""
     geom_path = _resolve_path(_require(data, "geometry_csv"), base_dir)
     x_mm, D_mm = load_geometry_csv(geom_path)
 
@@ -333,19 +320,11 @@ def build_nozzle_ideal(data: Mapping[str, Any], base_dir: Path) -> NozzleProfile
 @register("thermo_props")
 @with_error_context("build:thermo_props")
 def build_thermo_props(data: Mapping[str, Any], base_dir: Path) -> Mapping[str, Any]:
-    """
-    Thermo property/state evaluation spec.
+    """Build a normalized thermodynamic-property evaluation spec.
 
-    Accepts BOTH shapes:
-
-    New:
-      - single: {"state": {...}, "outputs": [...]}
-      - batch:  {"states": [{...flat props...}, {...}], "outputs": [...]}
-        each state may optionally include "name"/"id" and/or nested "state"/"given"
-
-    Legacy:
-      - single: {"given": {...}, "ask": [...]}
-      - batch:  {"states": [{"given": {...}, "ask": [...]}, ...]}
+    Accepted input forms include a single state with ``state`` or ``given``, a
+    batch list under ``states``, and a legacy ``given`` plus ``ask`` structure.
+    The normalized output has ``backend``, ``fluid``, ``states``, and ``meta``.
     """
     backend = str(data.get("backend", "coolprop"))
     fluid = str(_require(data, "fluid"))
@@ -450,25 +429,16 @@ def build_thermo_props(data: Mapping[str, Any], base_dir: Path) -> Mapping[str, 
 @register("equations")
 @with_error_context("build:equations")
 def build_equations(data: Mapping[str, Any], base_dir: Path) -> Mapping[str, Any]:
-    """
-    Build an equation-system spec as a Mapping.
+    """Build a stable equation-system mapping.
 
-    This is intentionally kept identical (in behavior + output keys) to the stable design.py
-    that you validated against older problems.
+    The returned mapping is compatible with
+    ``equations.spec.system_from_mapping``. It accepts the established CLI/app
+    shape with solver options, ``params`` or ``constants``, a variables mapping
+    or list, and equations supplied inline or through ``equations_file``.
 
-    Supported shapes:
-      (A) App/CLI style (your JSON):
-        {
-          "backend"/"solver": "auto|scipy|gekko",
-          "method": "hybr",
-          "tol": ...,
-          "max_iter": ...,
-          "max_restarts": ...,
-          "params" or "constants": {...},
-          "variables": {...}  (or list form)
-          "equations": [...]
-          "equations_file": "rel/path.txt"   (optional)
-        }
+    The builder intentionally does not add a top-level ``solve`` key. Nested
+    solve information, when present, is copied into ``meta`` for user-interface
+    and debugging purposes.
     """
     backend = _normalize_backend(data.get("backend", data.get("solver", "auto")))
     method = str(data.get("method", "hybr"))
@@ -585,25 +555,27 @@ def build_equations(data: Mapping[str, Any], base_dir: Path) -> Mapping[str, Any
 @register("optimize")
 @with_error_context("build:optimize")
 def build_optimize(data: Mapping[str, Any], base_dir: Path) -> Mapping[str, Any]:
-    """
-    Build an optimization spec as a Mapping.
+    """Build an optimization specification mapping.
 
-    Design constraints:
-    - Must NOT affect equations problems.
-    - Must be acceptable to equations.api.solve_system(), which will route
-      mapping problems to solve_optimize() when it sees problem_type='optimize'
-      (or objective/constraints keys).
+    The optimization builder accepts objective and sense fields, inline or
+    file-based constraints, optional design-variable declarations, and the same
+    equation-style variables/constants fields used by ``build_equations``.
 
-    Inputs accepted:
-      - objective / sense
-      - constraints / constraints_file
-      - design_vars (optional)
-      - and the usual equations fields (variables/constants/equations, plus optional solve block)
+    The returned mapping is routed by the equations facade to the optimizer
+    backend when ``problem_type`` is ``"optimize"`` or when objective and
+    constraint keys are present.
     """
     solve_in = _solve_dict(data)
 
     # Prefer explicit top-level keys; else solve block; else defaults.
-    backend = _normalize_backend(_pick_solve_opt(data, solve_in, "backend", _pick_solve_opt(data, solve_in, "solver", data.get("backend", data.get("solver", "auto")))))
+    backend = _normalize_backend(
+        _pick_solve_opt(
+            data,
+            solve_in,
+            "backend",
+            _pick_solve_opt(data, solve_in, "solver", data.get("backend", data.get("solver", "auto"))),
+        )
+    )
     method = str(_pick_solve_opt(data, solve_in, "method", data.get("method", "SLSQP")))
     tol = float(_pick_solve_opt(data, solve_in, "tol", data.get("tol", 1e-6)))
     max_iter = int(_pick_solve_opt(data, solve_in, "max_iter", data.get("max_iter", data.get("maxiter", 200))))
@@ -723,10 +695,10 @@ def build_optimize(data: Mapping[str, Any], base_dir: Path) -> Mapping[str, Any]
 
 
 def build_problem(mapping: Mapping[str, Any], in_path: Path) -> ProblemSpec:
-    """
-    Normalize an input mapping into ProblemSpec.
+    """Normalize an input mapping into a ``ProblemSpec``.
 
-    Requires: "problem_type"
+    The input mapping must include ``problem_type``. All remaining keys are
+    copied into ``ProblemSpec.data``.
     """
     if "problem_type" not in mapping:
         raise ValueError("Input must include 'problem_type'")
@@ -737,6 +709,7 @@ def build_problem(mapping: Mapping[str, Any], in_path: Path) -> ProblemSpec:
 
 
 def build_spec(problem: ProblemSpec, base_dir: Path) -> Any:
+    """Build the solver-specific specification for a ``ProblemSpec``."""
     if problem.problem_type not in _BUILDERS:
         raise ValueError(
             f"Unknown problem_type: {problem.problem_type!r}. "

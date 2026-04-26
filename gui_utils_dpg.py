@@ -2,18 +2,31 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-"""
-gui_utils_dpg
+"""Dear PyGui utility helpers for TDPy.
 
-Utilities for the Dear PyGui GUI for tdpy.
+This module provides standalone helpers used by the Dear PyGui frontend.
 
-This module is intentionally standalone-ish:
-- filesystem helpers (project root discovery, in/out dirs)
-- subprocess execution (async thread + output capture)
-- JSON/text helpers
-- OS "open" helpers for folders/files
-- Dear PyGui file_dialog payload normalization
-- input pattern resolution (foo.*, *.json, bare-stem -> .txt/.json)
+Feature areas
+-------------
+Filesystem helpers
+    Project-root discovery, input/output directory helpers, relative-path
+    formatting, and unique output-path generation.
+
+Subprocess helpers
+    Background command execution with stdout/stderr capture and callback-based
+    line streaming.
+
+File helpers
+    JSON and text loading/saving utilities used by the GUI.
+
+Platform helpers
+    OS-specific file and folder opening.
+
+Dear PyGui helpers
+    File-dialog payload normalization and input-pattern resolution.
+
+The module avoids relative imports so it can be used from ``python gui_core_dpg.py``
+and from module-style invocations during development.
 """
 
 import glob as _glob
@@ -30,13 +43,12 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 # ------------------------------ paths ------------------------------
 
 def find_repo_root(start: Optional[str | Path] = None) -> Path:
-    """
-    Find the tdpy repo root.
+    """Find the TDPy repository root.
 
-    Heuristic:
-    - walk upward looking for files that strongly indicate the project root:
-        __init__.py, cli.py, app.py
-    - prefer the directory containing this module if discovery is ambiguous
+    The search walks upward from a few likely starting locations and looks for
+    files that strongly indicate the project root: ``__init__.py``, ``cli.py``,
+    and ``app.py``. If discovery is ambiguous, the directory containing this
+    module is returned as the safest fallback.
     """
     candidates: List[Path] = []
     if start is not None:
@@ -69,14 +81,21 @@ def find_repo_root(start: Optional[str | Path] = None) -> Path:
 
 
 def in_dir(repo_root: Path) -> Path:
+    """Return the resolved default input directory for a repository root."""
     return (repo_root / "in").resolve()
 
 
 def out_dir(repo_root: Path) -> Path:
+    """Return the resolved default output directory for a repository root."""
     return (repo_root / "out").resolve()
 
 
 def ensure_dir(p: str | Path) -> Path:
+    """Ensure a directory exists and return the normalized path.
+
+    When ``p`` looks like a file path because it has a suffix, the parent
+    directory is created. Otherwise, ``p`` itself is created.
+    """
     pp = Path(p).expanduser()
     target = pp.parent if pp.suffix else pp
     target.mkdir(parents=True, exist_ok=True)
@@ -84,6 +103,7 @@ def ensure_dir(p: str | Path) -> Path:
 
 
 def is_inside(child: Path, parent: Path) -> bool:
+    """Return whether ``child`` is located inside ``parent``."""
     try:
         child.resolve().relative_to(parent.resolve())
         return True
@@ -92,7 +112,7 @@ def is_inside(child: Path, parent: Path) -> bool:
 
 
 def rel_to_in(path: Path, repo_root: Path) -> str:
-    """If path is inside in/, return a CLI-friendly relative path."""
+    """Return a CLI-friendly path relative to ``in`` when possible."""
     p = Path(path).resolve()
     inroot = in_dir(repo_root)
     if is_inside(p, inroot):
@@ -101,7 +121,11 @@ def rel_to_in(path: Path, repo_root: Path) -> str:
 
 
 def unique_path(base: Path) -> Path:
-    """Generate a unique path by appending _1, _2, ... before the suffix."""
+    """Generate a non-existing path by appending a numeric suffix.
+
+    The suffix is inserted before the file extension. For example,
+    ``result.json`` may become ``result_1.json``.
+    """
     base = Path(base)
     if not base.exists():
         return base
@@ -118,7 +142,12 @@ def unique_path(base: Path) -> Path:
 # ------------------------------ DearPyGui file dialog helpers ------------------------------
 
 def extract_dpg_file_dialog_path(app_data: Any) -> str:
-    """Normalize Dear PyGui file_dialog payloads across versions."""
+    """Normalize Dear PyGui file-dialog payloads across versions.
+
+    Different Dear PyGui versions return selected file paths under slightly
+    different keys. This helper checks the known shapes and returns a string
+    path when one is available.
+    """
     if not isinstance(app_data, dict):
         return ""
     sel = app_data.get("selections")
@@ -135,11 +164,18 @@ def extract_dpg_file_dialog_path(app_data: Any) -> str:
 
 
 def resolve_input_pattern(path: str | Path, *, prefer_exts: Tuple[str, ...] = (".txt", ".json")) -> Optional[Path]:
-    """
-    Resolve inputs like:
-      - /path/to/foo.*   (select foo.txt / foo.json if present)
-      - /path/to/*.txt   (select first match)
-      - /path/to/foo     (try foo.txt, foo.json, etc)
+    """Resolve a GUI input path or glob pattern to a concrete file.
+
+    Supported examples include absolute files, wildcard paths, and bare stems.
+    For wildcard matches, preferred extensions are selected first.
+
+    Examples
+    --------
+    The following inputs are supported::
+
+        /path/to/foo.*
+        /path/to/*.txt
+        /path/to/foo
     """
     p = Path(path).expanduser()
     s = str(p)
@@ -188,7 +224,7 @@ def resolve_input_pattern(path: str | Path, *, prefer_exts: Tuple[str, ...] = ("
 # ------------------------------ open helpers ------------------------------
 
 def open_path(path: str | os.PathLike[str] | Path) -> bool:
-    """Open a file/folder in the OS default handler."""
+    """Open a file or folder with the operating-system default handler."""
     p = Path(path).expanduser()
     if not p.exists():
         return False
@@ -208,16 +244,19 @@ def open_path(path: str | os.PathLike[str] | Path) -> bool:
 # ------------------------------ IO helpers ------------------------------
 
 def load_text(path: Path) -> str:
+    """Load text from a file using UTF-8 with replacement for bad bytes."""
     return Path(path).read_text(encoding="utf-8", errors="replace")
 
 
 def save_text(path: Path, text: str) -> None:
+    """Save text to a file using UTF-8 and create parent directories."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
 
 
 def load_json(path: Path) -> Dict[str, Any]:
+    """Load a JSON object from a file."""
     data = json.loads(load_text(path))
     if not isinstance(data, dict):
         raise ValueError(f"Expected JSON object in {path}, got {type(data).__name__}")
@@ -225,6 +264,7 @@ def load_json(path: Path) -> Dict[str, Any]:
 
 
 def save_json(path: Path, payload: Mapping[str, Any], *, indent: int = 2) -> None:
+    """Save a mapping as formatted JSON."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=indent, sort_keys=False) + "\n", encoding="utf-8")
@@ -234,6 +274,8 @@ def save_json(path: Path, payload: Mapping[str, Any], *, indent: int = 2) -> Non
 
 @dataclass
 class CmdResult:
+    """Result returned by the asynchronous command runner."""
+
     returncode: int
     stdout: str
     stderr: str
@@ -248,7 +290,29 @@ def run_cmd_async(
     on_line: Optional[Callable[[str], None]] = None,
     on_done: Optional[Callable[[CmdResult], None]] = None,
 ) -> threading.Thread:
-    """Run a command in a background thread and stream lines to callbacks."""
+    """Run a command in a background thread.
+
+    Parameters
+    ----------
+    cmd:
+        Command and arguments.
+    cwd:
+        Optional working directory.
+    env:
+        Optional environment mapping.
+    timeout:
+        Optional timeout in seconds.
+    on_line:
+        Callback invoked for each captured stdout or stderr line. Stderr lines
+        are prefixed with ``"STDERR: "``.
+    on_done:
+        Callback invoked once with ``CmdResult``.
+
+    Returns
+    -------
+    threading.Thread
+        The started daemon thread.
+    """
 
     def _worker() -> None:
         try:
@@ -310,12 +374,13 @@ def run_cmd_async(
 
 
 def last_nonempty_line(text: str) -> str:
+    """Return the last non-empty line in a text block."""
     lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
     return lines[-1] if lines else ""
 
 
 def preview_cmd(cmd: Sequence[str], *, prefix: str = "runroot") -> str:
-    """Build a nice command preview string."""
+    """Build a compact command preview string for the GUI."""
     if not cmd:
         return ""
     out: List[str] = []

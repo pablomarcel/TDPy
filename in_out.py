@@ -1,17 +1,24 @@
 from __future__ import annotations
 
-"""
-io
+"""Input and output utilities for TDPy.
 
-Lightweight I/O utilities:
-- Load problem definitions from JSON / YAML / TXT (EES-ish key=value)
-- Save JSON (and optionally YAML)
-- Simple CSV helpers (geometry, generic tables)
-- Plotly HTML saver helper
+This module provides lightweight helpers for reading and writing problem files.
 
-This module stays dependency-light:
-- PyYAML is optional
-- Plotly is optional (only needed if you call save_plotly_html)
+Supported input formats
+-----------------------
+JSON
+    Structured problem definitions.
+
+YAML
+    Human-readable configuration files when PyYAML is installed.
+
+TXT
+    EES-style key-value text files with simple scalar and list coercion.
+
+Design notes
+------------
+The module intentionally stays dependency-light. PyYAML is optional, and Plotly
+is only required when ``save_plotly_html`` is called.
 """
 
 import csv
@@ -30,23 +37,27 @@ except Exception:  # pragma: no cover
 # ------------------------------ dirs ------------------------------
 
 def package_dir() -> Path:
+    """Return the directory containing this module."""
     return Path(__file__).resolve().parent
 
 
 def in_dir() -> Path:
+    """Return the default input directory."""
     return package_dir() / "in"
 
 
 def out_dir() -> Path:
+    """Return the default output directory."""
     return package_dir() / "out"
 
 
 # ------------------------------ TXT (EES-ish) parsing ------------------------------
 
 def _strip_inline_comments(line: str) -> str:
-    """
-    Strip inline comments (#, !, //) from a line.
-    This is intentionally simple and does not attempt quote-aware parsing.
+    """Strip simple inline comments from one text line.
+
+    Comment markers are ``//``, ``#``, and ``!``. The parser is intentionally
+    simple and does not attempt quote-aware parsing.
     """
     s = line
     for c in ("//", "#", "!"):
@@ -57,20 +68,21 @@ def _strip_inline_comments(line: str) -> str:
 
 @with_error_context("load_text_kv")
 def load_text_kv(path: str | Path) -> Dict[str, Any]:
-    """
-    Parse a simple EES-ish .txt file with lines like:
+    """Parse an EES-style key-value text file.
 
-        key = value   # comment
+    Supported line forms include ``key = value`` and ``key: value``. Blank lines
+    and comment-only lines are skipped.
+
+    Values are coerced on a best-effort basis into booleans, ``None``, integers,
+    floats, JSON objects or arrays, comma-separated lists, or raw strings.
+
+    Examples
+    --------
+    The following input lines are accepted::
+
+        key = value
         key2: value2
-        list = 1,2,3
-
-    Comments: #  !  //
-    Values are best-effort coerced into:
-      - bool / None
-      - int / float
-      - JSON objects/arrays if the value looks like JSON
-      - list if comma-separated
-      - else raw string
+        list = 1, 2, 3
     """
     p = Path(path)
     out: Dict[str, Any] = {}
@@ -165,13 +177,11 @@ def _coerce_scalar(s: str) -> Any:
 
 @with_error_context("load_problem")
 def load_problem(path: str | Path) -> Dict[str, Any]:
-    """
-    Load a problem mapping from:
-      - .json
-      - .yaml / .yml (optional dependency)
-      - .txt (EES-ish key/value)
+    """Load a problem mapping from JSON, YAML, or TXT.
 
-    Returns a plain dict suitable for build_problem/build_spec.
+    The returned object is always a plain dictionary suitable for
+    ``build_problem`` or ``build_spec``. JSON and YAML roots must be mappings.
+    TXT files are parsed with ``load_text_kv``.
     """
     p = Path(path)
     ext = p.suffix.lower()
@@ -202,6 +212,7 @@ def load_problem(path: str | Path) -> Dict[str, Any]:
 
 @with_error_context("save_json")
 def save_json(data: Mapping[str, Any], path: str | Path) -> Path:
+    """Save a mapping as formatted JSON and return the output path."""
     p = Path(path)
     ensure_dir(p)
     txt = json.dumps(dict(data), indent=2, default=json_default)
@@ -213,8 +224,9 @@ def save_json(data: Mapping[str, Any], path: str | Path) -> Path:
 
 @with_error_context("save_yaml")
 def save_yaml(data: Mapping[str, Any], path: str | Path) -> Path:
-    """
-    Save YAML if PyYAML is installed. Useful for human-edited configs.
+    """Save a mapping as YAML and return the output path.
+
+    PyYAML must be installed to use this helper.
     """
     if yaml is None:
         raise ImportError("pyyaml not installed; can't write YAML outputs.")
@@ -231,11 +243,10 @@ def save_yaml(data: Mapping[str, Any], path: str | Path) -> Path:
 
 @with_error_context("load_geometry_csv")
 def load_geometry_csv(path: str | Path) -> Tuple[List[float], List[float]]:
-    """
-    Return x_mm, D_mm arrays from a CSV with headers:
-      x_mm,D_mm
+    """Return ``x_mm`` and ``D_mm`` arrays from a geometry CSV file.
 
-    Keeps the function name for backward compatibility with the existing nozzle solver.
+    The CSV file must include headers named ``x_mm`` and ``D_mm``. The function
+    name is kept for backward compatibility with the existing nozzle solver.
     """
     p = Path(path)
     with p.open("r", encoding="utf-8", newline="") as f:
@@ -266,11 +277,10 @@ def save_table_csv(
     *,
     fieldnames: Sequence[str] | None = None,
 ) -> Path:
-    """
-    Save a list of dict-like rows to CSV.
+    """Save a sequence of row mappings to a CSV file.
 
-    - If fieldnames not provided, inferred from first row's keys.
-    - Values are stringified.
+    If ``fieldnames`` is not provided, the column names are inferred from the
+    first row. Values are written through ``csv.DictWriter``.
     """
     p = Path(path)
     ensure_dir(p)
@@ -296,9 +306,10 @@ def save_table_csv(
 # ------------------------------ Plotly helper ------------------------------
 
 def save_plotly_html(fig: Any, path: str | Path) -> str:
-    """
-    Save a Plotly figure to an HTML file. Plotly must be installed by the caller.
-    Returns the string path.
+    """Save a Plotly figure as HTML and return the string path.
+
+    Plotly must be installed and the caller must pass an object that implements
+    ``write_html``.
     """
     p = Path(path)
     ensure_dir(p)

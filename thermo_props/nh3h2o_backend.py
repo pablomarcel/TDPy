@@ -1,40 +1,15 @@
+"""NH3-H2O property backend for TDPy.
+
+This module wraps the native ammonia-water implementation used for Ibrahim and
+Klein style NH3-H2O property work. It provides TPX state evaluation, scalar
+property calls, batch helpers, EES-style shims, and CoolProp-style shims.
+
+Inputs are temperature in kelvin, pressure in pascals, NH3 mass fraction, and
+an optional EES quality flag for supported TXQ calls. Outputs are plain Python
+floats or dictionaries suitable for JSON serialization.
+"""
+
 from __future__ import annotations
-
-"""
-thermo_props.nh3h2o_backend
-
-NH3–H2O backend (low-level) built on our native Ibrahim & Klein (1993) implementation
-(ammonia_water.py).
-
-This module is intentionally "thin": the heavy lifting (including guardrails for
-phase misclassification, VLE checks, and vapor-EOS applicability screens) lives in
-ammonia_water.props_tpx(...). This wrapper focuses on:
-
-- Lazy import + cached callable (dependency-light at import time)
-- Stable outputs (plain Python floats, no numpy scalars leaking)
-- Consistent error wrapping with full call context
-- Multiple calling styles:
-  (1) EES-like scalar: NH3H2OPropsSI(out, k1,v1, k2,v2, k3,v3, ...) -> float
-      Supports both TPX and TXQ triplets:
-        - ("T",T,"P",P,"X",x)  (typical)
-        - ("T",T,"X",x,"Q",Q)  (used by EES docs for SurfaceTension)
-  (2) EES-like dict: state_tpx(T_K, P_Pa, X, strict=True) -> dict[str, Any]
-  (3) CoolProp-like: NH3H2O(out, in1,v1, in2,v2, in3,v3, strict=True) -> float
-      (order-agnostic inputs; requires T,P,X)
-
-Units:
-- Inputs:  T [K], P [Pa], X = NH3 mass fraction [-], Q (special EES quality flag) [-]
-- Outputs: h [J/kg], s [J/kg-K], u [J/kg], v [m^3/kg], rho [kg/m^3], q [-]
-  Plus many convenience fields from ammonia_water (T_C, P_bar, xL, yV, wL, wV, etc.)
-
-Notes:
-- This backend does NOT do inverse solves (e.g., given h,P,X find T). The equations
-  solver can solve unknowns by treating prop calls as functions.
-- strict behavior:
-    strict=True  -> raise NH3H2OCallError on any failure or ok=0
-    strict=False -> return ok=0 dict with NaNs + error string (state),
-                    and NaN for scalar props if present in dict
-"""
 
 from dataclasses import dataclass
 from functools import lru_cache
@@ -94,7 +69,7 @@ ALIASES = {
 
 
 def supports(fluid: str) -> bool:
-    """Return True if the given fluid string should dispatch to this backend."""
+    """Return whether a fluid string should dispatch to this backend."""
     f = str(fluid).strip().upper()
     return bool(f) and (f in ALIASES)
 
@@ -102,11 +77,11 @@ def supports(fluid: str) -> bool:
 # ------------------------------ errors ------------------------------
 
 class NH3H2ONotInstalled(ImportError):
-    """Raised when ammonia_water cannot be imported."""
+    """Raised when the native ammonia-water implementation cannot be imported."""
 
 
 class NH3H2OCallError(RuntimeError):
-    """Raised when an ammonia_water call fails; message includes full call context."""
+    """Raised when an NH3-H2O property call fails with context."""
 
 
 # ------------------------------ internal import caching ------------------------------
@@ -115,15 +90,10 @@ _props_tpx_impl: Callable[..., Mapping[str, Any]] | None = None
 
 
 def _import_ammonia_water_props_tpx() -> Callable[..., Mapping[str, Any]]:
-    """
-    Lazy import ammonia_water.props_tpx and cache it.
+    """Import ``ammonia_water.props_tpx`` lazily and cache the callable.
 
-    We try a few import locations to make integration painless during the move
-    from sandbox -> package:
-      1) sibling module in thermo_props:  from .ammonia_water import props_tpx
-      2) absolute path inside tdpy:      from thermo_props.ammonia_water import props_tpx
-      3) top-level module (sandbox):      import ammonia_water; ammonia_water.props_tpx
-    """
+The preferred import path is the sibling module inside ``thermo_props``. Fallback
+paths are retained for package moves and sandbox-style execution."""
     global _props_tpx_impl
     if _props_tpx_impl is not None:
         return _props_tpx_impl
@@ -164,7 +134,7 @@ def _import_ammonia_water_props_tpx() -> Callable[..., Mapping[str, Any]]:
 # ------------------------------ availability ------------------------------
 
 def nh3h2o_available() -> bool:
-    """Return True if ammonia_water.props_tpx is importable in the current environment."""
+    """Return whether ``ammonia_water.props_tpx`` is importable."""
     try:
         _import_ammonia_water_props_tpx()
         return True
@@ -346,11 +316,10 @@ def _norm_out(key: str) -> str:
 
 @dataclass(frozen=True)
 class NH3H2OCall:
-    """
-    A single NH3H2O property call in CoolProp-like signature form:
-      out, in1, v1, in2, v2, in3, v3
-    where inputs must include T, P, X (NH3 mass fraction).
-    """
+    """Container for one NH3-H2O CoolProp-style property call.
+
+The object stores one output key, three input key-value pairs, and a strict
+error-handling flag. The input keys are expected to resolve to T, P, and X."""
     out: str
     in1: str
     v1: float
@@ -381,7 +350,7 @@ def _to_float(name: str, x: Any) -> float:
 
 
 def _to_massfrac(name: str, x: Any) -> float:
-    """Mass fraction guardrail: keep wrapper-level checks cheap and obvious."""
+    """Validate and return a mass fraction in the closed interval from zero to one."""
     y = _to_float(name, x)
     if y < 0.0 or y > 1.0:
         raise ValueError(f"{name} must be a mass fraction in [0, 1]. Got {y!r}")
@@ -431,10 +400,9 @@ def _wrap_call_error(
 
 
 def _normalize_state_dict(d: Mapping[str, Any]) -> dict[str, Any]:
-    """
-    Ensure numeric-looking fields are plain floats (no numpy scalars),
-    while preserving strings and other metadata.
-    """
+    """Return a state dictionary with numeric-looking values converted to floats.
+
+Boolean values, strings, and metadata are preserved."""
     out: dict[str, Any] = {}
     for k, v in d.items():
         kk = str(k)
@@ -491,13 +459,11 @@ def _state_from_tpx(T: float, P: float, X: float, *, strict: bool) -> dict[str, 
 
 
 def _state_from_txq(T: float, X: float, Q: float, *, strict: bool) -> dict[str, Any]:
-    """
-    Some EES calls (notably SurfaceTension) use (T, X, Q) as the 3 independents.
-    We try to call ammonia_water.props_tpx with TXQ-style kwargs.
+    """Return a state dictionary from T, X, and Q inputs.
 
-    If ammonia_water.props_tpx doesn't support TXQ, we raise a *clear* error that
-    tells you which call shape failed.
-    """
+This helper supports the EES-style TXQ call shape used by some surface-tension
+examples. Several keyword spellings are attempted for compatibility with the
+underlying ammonia-water implementation."""
     fn = _import_ammonia_water_props_tpx()
     last: Exception | None = None
 
@@ -563,10 +529,9 @@ def _extract_float(res: Mapping[str, Any], key: str) -> float:
 
 
 def _extract_float_any(res: Mapping[str, Any], key: str) -> float:
-    """
-    Extract a float, trying fallbacks for keys that we know might vary
-    across ammonia_water implementations (e.g., k, mu, sigma, cp).
-    """
+    """Extract a float output from a state dictionary.
+
+Known alternate key names are tried before raising ``KeyError``."""
     if key in res:
         return _extract_float(res, key)
 
@@ -598,14 +563,11 @@ def _extract_str_any(res: Mapping[str, Any], keys: Sequence[str]) -> str:
 # ------------------------------ primary API (TPX) ------------------------------
 
 def state_tpx(T_K: float, P_Pa: float, X: float, *, strict: bool = True) -> dict[str, Any]:
-    """
-    Return the full state dict from ammonia_water.props_tpx(T, P, X).
+    """Return the full NH3-H2O state dictionary for T, P, and X.
 
-    If strict=True:
-      - raises NH3H2OCallError for any failure or ok=0.
-    If strict=False:
-      - returns the dict as provided (likely ok=0 with NaNs + error string).
-    """
+When ``strict`` is true, failures or an ``ok`` value of zero raise
+``NH3H2OCallError``. When ``strict`` is false, the underlying result dictionary
+is returned for caller-side inspection."""
     T = _to_float("T_K", T_K)
     P = _to_float("P_Pa", P_Pa)
     Xv = _to_massfrac("X", X)
@@ -613,7 +575,7 @@ def state_tpx(T_K: float, P_Pa: float, X: float, *, strict: bool = True) -> dict
 
 
 def ok_tpx(T_K: float, P_Pa: float, X: float) -> bool:
-    """Quick boolean ok flag (always strict=False internally)."""
+    """Return a quick success flag using ``strict=False`` internally."""
     st = state_tpx(T_K, P_Pa, X, strict=False)
     ok = st.get("ok", 0)
     try:
@@ -623,11 +585,10 @@ def ok_tpx(T_K: float, P_Pa: float, X: float) -> bool:
 
 
 def phase_tpx(T_K: float, P_Pa: float, X: float, *, strict: bool = True) -> str:
-    """
-    Return the phase string from the model ('L', 'g', '2ph', 'err', ...).
+    """Return the phase string reported by the NH3-H2O model.
 
-    This is not a solver scalar; it’s here for reporting/debug/UX.
-    """
+The value is intended for reporting and diagnostics, not as a scalar equation
+solver residual."""
     st = state_tpx(T_K, P_Pa, X, strict=bool(strict))
     try:
         # tolerate minor key drift
@@ -645,9 +606,7 @@ def phase_tpx(T_K: float, P_Pa: float, X: float, *, strict: bool = True) -> str:
 
 
 def prop_tpx(out: str, T_K: float, P_Pa: float, X: float, *, strict: bool = True) -> float:
-    """
-    Return a single float-valued property for NH3–H2O at (T,P,X).
-    """
+    """Return one float-valued NH3-H2O property at T, P, and X."""
     out_raw = str(out)
     out_key = _norm_out(out_raw)
 
@@ -691,11 +650,9 @@ def props_multi_tpx(
     *,
     strict: bool = True,
 ) -> dict[str, float]:
-    """
-    Convenience: compute multiple float outputs for the same (T,P,X).
+    """Return several float-valued NH3-H2O properties for one TPX state.
 
-    Note: keys are returned as provided in `outputs` (not normalized).
-    """
+The returned dictionary keeps the output keys exactly as requested by the caller."""
     st = state_tpx(T_K, P_Pa, X, strict=bool(strict))
     out: dict[str, float] = {}
     for k in outputs:
@@ -717,10 +674,10 @@ def props_multi_tpx(
 
 
 def _iter_calls(calls: Iterable[Any]) -> Iterable[NH3H2OCall]:
-    """
-    Internal: accept NH3H2OCall objects but also tolerate common tuple/dict shapes.
-    This is additive/forgiving and does not change the public function signature.
-    """
+    """Yield ``NH3H2OCall`` objects from dataclasses, mappings, or tuples.
+
+The conversion is forgiving so batch helpers can accept common user-facing
+shapes without changing the public function signature."""
     for c in calls:
         if isinstance(c, NH3H2OCall):
             yield c
@@ -764,7 +721,7 @@ def _iter_calls(calls: Iterable[Any]) -> Iterable[NH3H2OCall]:
 
 
 def batch_prop_tpx(calls: Iterable[NH3H2OCall]) -> list[float]:
-    """Convenience: execute a batch of NH3H2O property calls (CoolProp-like signature)."""
+    """Execute a batch of NH3-H2O property calls and return floats."""
     ys: list[float] = []
     for c in _iter_calls(calls):
         ys.append(
@@ -780,13 +737,9 @@ def batch_prop_tpx(calls: Iterable[NH3H2OCall]) -> list[float]:
 
 
 def batch_state_tpx(states: Iterable[tuple[float, float, float] | Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """
-    Convenience: batch compute full state dicts.
+    """Return full state dictionaries for several TPX states.
 
-    Accepts either:
-      - tuples (T_K, P_Pa, X)
-      - mappings with keys T_K/P_Pa/X (or T/P/X)
-    """
+Each item may be a ``(T_K, P_Pa, X)`` tuple or a mapping with equivalent keys."""
     out: list[dict[str, Any]] = []
     for item in states:
         if isinstance(item, Mapping):
@@ -874,20 +827,10 @@ _EES_OUT_MAP: Mapping[str, str] = {
 
 
 def NH3H2OPropsSI(out: Any, *args: Any, strict: bool = True) -> float:
-    """
-    EES-ish scalar property call used by tdpy equations injection.
+    """Return one NH3-H2O property using an EES-style scalar signature.
 
-    Examples:
-      h     = NH3H2OPropsSI("H", "T", T, "P", P, "X", x)
-      Q     = NH3H2OPropsSI("Q", "T", T, "P", P, "X", x)
-      k     = NH3H2OPropsSI("K", "T", T, "P", P, "X", x)
-      mu    = NH3H2OPropsSI("MU","T", T, "P", P, "X", x)
-      sigma = NH3H2OPropsSI("SIGMA","T",T,"X",x,"Q",0)
-
-    Supports either:
-      - TPX: requires T,P,X
-      - TXQ: requires T,X,Q
-    """
+The function accepts key-value input pairs. It supports TPX inputs for the usual
+state calls and TXQ inputs for EES-style surface-tension calls."""
     out_raw = str(out).strip()
     out_u = out_raw.upper()
     # If user passed full keys ("h","k","sigma") accept them too.
@@ -987,16 +930,10 @@ def NH3H2O(
     *,
     strict: bool = True,
 ) -> float:
-    """
-    CoolProp-like signature for NH3–H2O mixture thermodynamic_properties.
+    """Return one NH3-H2O property using a CoolProp-like TPX signature.
 
-    Example (order-agnostic):
-      h   = NH3H2O("h",   "T", T, "P", P, "X", X)
-      rho = NH3H2O("rho", "P", P, "X", X, "T", T)
-
-    Note: This signature intentionally stays TPX-only.
-    TXQ is supported via NH3H2OPropsSI for the EES docs surface-tension call.
-    """
+The three input key-value pairs are order agnostic but must resolve to T, P, and
+X. TXQ calls are intentionally handled by ``NH3H2OPropsSI``."""
     out_raw = str(out)
     out_key = _norm_out(out_raw)
     try:
@@ -1029,7 +966,7 @@ def NH3H2O_STATE(
     *,
     strict: bool = True,
 ) -> dict[str, Any]:
-    """CoolProp-like signature returning the full state dict."""
+    """Return the full state dictionary using a CoolProp-like TPX signature."""
     try:
         T, P, X = _parse_tpx_inputs(in1, v1, in2, v2, in3, v3)
         return state_tpx(T, P, X, strict=bool(strict))
@@ -1054,10 +991,10 @@ def NH3H2O_STATE(
 
 
 def NH3H2O_TPX(out: str, T: float, P: float, X: float, *, strict: bool = True) -> float:
-    """Direct TPX shim: NH3H2O_TPX('h', T, P, X)."""
+    """Return one property from direct T, P, and X inputs."""
     return prop_tpx(out, T, P, X, strict=bool(strict))
 
 
 def NH3H2O_STATE_TPX(T: float, P: float, X: float, *, strict: bool = True) -> dict[str, Any]:
-    """Direct TPX shim returning full dict: NH3H2O_STATE_TPX(T, P, X)."""
+    """Return the full state dictionary from direct T, P, and X inputs."""
     return state_tpx(T, P, X, strict=bool(strict))

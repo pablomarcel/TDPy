@@ -1,38 +1,33 @@
 from __future__ import annotations
 
-"""
-thermo_props.api
+"""High-level thermodynamic-property API for TDPy.
 
-High-level, EES-ish API surface for thermodynamic property evaluation.
+This module provides the app-facing and user-facing property evaluation surface
+for the ``thermo_props`` package.
 
-LATEST FACTS / CONSTRAINTS
---------------------------
-- app routes problem_type == "thermo_props" to thermo_props.api.run(spec) (preferred)
-  with fallback to thermo_props.api.eval_states(spec).
-- design.build_thermo_props currently builds an app-facing spec like:
+Public entry points
+-------------------
+``state``
+    Build one ``ThermoState`` from exactly two independent state properties.
 
-    {
-      "backend": "coolprop",
-      "fluid": "R134a",
-      "states": [
-        {"id": "1", "given": {"T_C": -10, "x": 1.0}, "ask": ["P","Hmass"]},
-        {"id": "2", "given": {"P_bar": 10, "h_kJkg": 240}, "ask": ["T","Smass"]},
-      ],
-      "meta": {...}
-    }
+``props``
+    Return a property dictionary in SI units for one state.
 
-- This module must therefore:
-  * provide run(spec) that understands the above shape (plus some backward-compat shapes),
-  * remain thin and stable,
-  * keep the CoolProp dependency isolated in coolprop_backend.py,
-  * keep robust state construction in state.py.
+``prop``
+    Return one scalar property in SI units for one state.
 
-Public surface:
-- state(...) -> ThermoState (computed props in SI)
-- prop(...)  -> single property in SI
-- props(...) -> property dict in SI
-- run(spec)  -> app-facing facade for JSON-driven evaluation (batch or single)
-- saturation/isobar helpers for Plotly overlays
+``run``
+    JSON-driven facade used by the TDPy application layer for single-state and
+    batch thermodynamic-property evaluations.
+
+``saturation_curve_Ts`` and ``isobars_Ts``
+    Plot-overlay helpers for T-s diagrams.
+
+Implementation notes
+--------------------
+The module remains thin by design. Robust state construction lives in
+``thermo_props.state`` and low-level property calls remain isolated in
+``thermo_props.coolprop_backend``.
 """
 
 from dataclasses import asdict
@@ -54,16 +49,32 @@ def state(
     include_phase: bool = True,
     **spec: Any,
 ) -> ThermoState:
-    """
-    Build a thermodynamic state from exactly two independent thermodynamic_properties.
+    """Build a thermodynamic state from two independent properties.
 
-    Examples:
-        st = state(fluid="R134a", T_C=-10, x=1.0)
-        st = state(fluid="HEOS::Air", T=300.0, P_bar=1.01325)
+    Parameters
+    ----------
+    fluid:
+        Fluid identifier. This may also be supplied in ``spec``.
+    outputs:
+        Requested output property keys.
+    include_phase:
+        Whether to request a phase string when supported by the backend.
+    **spec:
+        State-definition keys. The mapping must contain exactly two
+        independent thermodynamic inputs after metadata keys are ignored.
 
-    `spec` must contain exactly two thermo keys (aside from metadata like name/label/id/etc).
-    Keys may be EES-ish: T, P, h, s, u, rho, v, x, Q
-    Or unit-suffixed: T_C, P_bar, h_kJkg, s_kJkgK, rho_kgm3, v_m3kg, ...
+    Examples
+    --------
+    ``state(fluid="R134a", T_C=-10, x=1.0)``
+
+    ``state(fluid="HEOS::Air", T=300.0, P_bar=1.01325)``
+
+    Notes
+    -----
+    Accepted input keys include EES-style names such as ``T``, ``P``, ``h``,
+    ``s``, ``u``, ``rho``, ``v``, ``x``, and ``Q``, plus unit-suffixed keys
+    such as ``T_C``, ``P_bar``, ``h_kJkg``, ``s_kJkgK``, ``rho_kgm3``, and
+    ``v_m3kg``.
     """
     mapping: dict[str, Any] = dict(spec)
     if fluid is not None:
@@ -79,12 +90,7 @@ def props(
     include_phase: bool = True,
     **spec: Any,
 ) -> dict[str, float]:
-    """
-    Return a property dictionary in SI units for a state defined by two thermodynamic_properties.
-
-    Example:
-        d = props(fluid="R134a", T_C=35, x=0.0, outputs=("P","Hmass","Smass"))
-    """
+    """Return a property dictionary in SI units for a thermodynamic state."""
     st = state(fluid=fluid, outputs=outputs, include_phase=include_phase, **spec)
     return dict(st.props)
 
@@ -97,12 +103,24 @@ def prop(
     include_phase: bool = False,
     **spec: Any,
 ) -> float:
-    """
-    Return a single property in SI units for a state defined by two thermodynamic_properties.
+    """Return one property in SI units for a thermodynamic state.
 
-    Example:
-        P = prop("P", fluid="R134a", T_C=35, x=0.0)
-        h = prop("Hmass", fluid="HEOS::Air", T=300, P=101325)
+    Parameters
+    ----------
+    out:
+        Requested output property key.
+    fluid:
+        Fluid identifier. This may also be supplied in ``spec``.
+    include_phase:
+        Whether to include phase evaluation while constructing the state.
+    **spec:
+        State-definition keys.
+
+    Examples
+    --------
+    ``prop("P", fluid="R134a", T_C=35, x=0.0)``
+
+    ``prop("Hmass", fluid="HEOS::Air", T=300, P=101325)``
     """
     st = state(fluid=fluid, outputs=(out,), include_phase=include_phase, **spec)
     if out not in st.props:
@@ -180,7 +198,7 @@ def _eval_one_state(
             "props": dict(st.props),
         }
 
-    # Back-compat: allow state defined directly by two keys at the item level
+    # Back-compat: allow state defined directly by two keys at the item level.
     outputs = outputs_default or DEFAULT_OUTPUTS
     st = state_from_mapping(
         dict(state_item),
@@ -194,7 +212,11 @@ def _eval_one_state(
         "name": state_item.get("name", None),
         "label": state_item.get("label", None),
         "fluid": st.fluid,
-        "given": {k: v for k, v in dict(state_item).items() if k not in ("id", "name", "label", "fluid", "ask", "outputs", "backend", "meta")},
+        "given": {
+            k: v
+            for k, v in dict(state_item).items()
+            if k not in ("id", "name", "label", "fluid", "ask", "outputs", "backend", "meta")
+        },
         "outputs": list(outputs),
         "in1": st.in1,
         "v1": st.v1,
@@ -207,28 +229,36 @@ def _eval_one_state(
 
 @with_error_context("thermo_props.api.run")
 def run(spec: Any) -> dict[str, Any]:
-    """
-    App-oriented entry point.
+    """Evaluate one or more thermodynamic-property states.
 
-    Primary (current) shape produced by design.build_thermo_props:
+    This is the app-oriented entry point used by ``problem_type =
+    "thermo_props"`` inputs.
 
-      {
-        "backend": "coolprop",
-        "fluid": "R134a",
-        "states": [
-          {"id":"1","given":{"T_C":-10,"x":1.0},"ask":["P","Hmass"]},
-          {"id":"2","given":{"P_bar":10,"h_kJkg":240},"ask":["T","Smass"]}
-        ],
-        "meta": {...}
-      }
+    Preferred input shape
+    ---------------------
+    The current design layer emits a mapping with these keys:
 
-    Supported (back-compat) shapes:
-      - {"fluid": "...", "state": {...}, "outputs":[...]}
-      - {"fluid": "...", "states": [...], "outputs":[...]}  (where each state is direct two-key mapping)
-      - {"fluid":"...", "given": {...}, "ask":[...]}  (single-state shorthand)
-      - {"fluid":"...", "T":..., "P":..., "outputs":[...]} (direct two-key top-level)
+    * ``backend``: backend label, typically ``"coolprop"``.
+    * ``fluid``: root-level fluid identifier.
+    * ``states``: list of state mappings.
+    * ``meta``: optional metadata mapping.
 
-    Returns a JSON-serializable payload.
+    Each state may use ``given`` for state inputs and ``ask`` for requested
+    output keys.
+
+    Backward-compatible shapes
+    --------------------------
+    The function also accepts older shapes:
+
+    * ``{"fluid": "...", "state": {...}, "outputs": [...]}``
+    * ``{"fluid": "...", "states": [...], "outputs": [...]}``
+    * ``{"fluid": "...", "given": {...}, "ask": [...]}``
+    * ``{"fluid": "...", "T": ..., "P": ..., "outputs": [...]}``
+
+    Returns
+    -------
+    dict[str, Any]
+        JSON-serializable result payload.
     """
     m = _as_mapping(spec, "thermo_props spec")
 
@@ -316,7 +346,7 @@ def run(spec: Any) -> dict[str, Any]:
             "meta": dict(m.get("meta", {}) or {}) if isinstance(m.get("meta", {}) or {}, Mapping) else {},
         }
 
-    # ---- Compatibility: attempt to interpret the top-level mapping directly as a two-key state
+    # ---- Compatibility: attempt to interpret the top-level mapping directly as a two-key state.
     try:
         st = state_from_mapping(
             dict(m),
@@ -343,19 +373,17 @@ def run(spec: Any) -> dict[str, Any]:
         ) from e
 
 
-# Back-compat alias (EespyApp will fall back to this name if run() isn't found)
+# Back-compat alias (EespyApp will fall back to this name if run() isn't found).
 eval_states = run
 
 
 # ------------------------------ serialization helpers ------------------------------
 
 def state_to_dict(st: ThermoState) -> dict[str, Any]:
-    """
-    JSON-friendly representation for saving results.
+    """Return a JSON-friendly representation of a ``ThermoState``.
 
-    Notes:
-    - All values are in SI units (CoolProp-native) except derived 'v' (m^3/kg).
-    - `phase` is included if available.
+    Values are in SI units using CoolProp-native keys, except derived outputs
+    such as ``v`` in cubic meters per kilogram.
     """
     return asdict(st)
 
@@ -370,17 +398,14 @@ def saturation_curve_Ts(
     T_min_K: float | None = None,
     T_max_K: float | None = None,
 ) -> dict[str, list[float]]:
-    """
-    Return saturation dome curves for a pure fluid in T–s space.
+    """Return saturation-dome curves for a pure fluid in T-s space.
 
-    Output keys:
-      - "T_K"
-      - "sL_JkgK" (sat. liquid)
-      - "sV_JkgK" (sat. vapor)
+    Output keys are ``T_K``, ``sL_JkgK`` for saturated liquid entropy, and
+    ``sV_JkgK`` for saturated vapor entropy.
 
-    Notes:
-    - Uses CoolProp saturation evaluation via (T, Q).
-    - For fluids without a saturation curve (or mixtures), CoolProp may error.
+    The helper uses CoolProp saturation evaluation through ``(T, Q)`` calls.
+    Fluids without a saturation curve, or mixtures that do not support this
+    evaluation path, may raise ``CoolPropCallError``.
     """
     if n < 10:
         raise ValueError("n must be >= 10")
@@ -427,11 +452,25 @@ def isobars_Ts(
     T_min_K: float | None = None,
     T_max_K: float | None = None,
 ) -> list[dict[str, Any]]:
-    """
-    Generate T–s isobars for overlay (like Klein & Nellis style backgrounds).
+    """Generate T-s isobars for Plotly-style overlays.
 
-    Returns a list of traces (data dicts) suitable for Plotly:
-      [{"P_Pa":..., "T_K":[...], "s_JkgK":[...]} ...]
+    Parameters
+    ----------
+    fluid:
+        Fluid identifier.
+    pressures_Pa:
+        Iterable of pressure values in pascals.
+    nT:
+        Number of temperature samples per isobar.
+    T_min_K:
+        Optional lower temperature bound in kelvin.
+    T_max_K:
+        Optional upper temperature bound in kelvin.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        Trace-like dictionaries with keys ``P_Pa``, ``T_K``, and ``s_JkgK``.
     """
     if nT < 10:
         raise ValueError("nT must be >= 10")
@@ -482,8 +521,10 @@ def _safe_sat_probe(fluid: str) -> bool:
 
 
 def _find_sat_T_bounds(fluid: str) -> tuple[float, float]:
-    """
-    Best-effort scan for saturation temperature bounds supported by CoolProp via (T,Q) calls.
+    """Find approximate saturation-temperature bounds for ``(T, Q)`` calls.
+
+    The search is intentionally best-effort. It probes downward and upward from
+    300 K and returns a usable interval for overlay generation.
     """
     if not _safe_sat_probe(fluid):
         raise CoolPropCallError("Fluid does not appear to support saturation via (T,Q) calls.")

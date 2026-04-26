@@ -1,52 +1,45 @@
 # equations/safe_eval.py
 from __future__ import annotations
 
-"""
-equations.safe_eval
+"""Safe expression evaluation for EES-style equation strings.
 
-A small, dependency-free "safe eval" layer for EES-ish equation strings.
+This module provides a small dependency-free evaluation layer for equation and
+expression strings used by the TDPy equation solver.
 
-Use cases:
-- Convert an equation like "P2 = P1 + dp" into a residual: "(P2) - (P1 + dp)"
-- Compile + evaluate residual expressions with a restricted AST whitelist
-- Extract variable names referenced by an expression (for validation / unknown selection)
+Use cases
+---------
+The module supports:
 
-Security model:
-- Parse with `ast`, reject dangerous nodes (attribute access, subscripts, comprehensions, etc.)
-- Evaluate with `eval(code, {"__builtins__": {}}, safe_scope)`
+* Converting an equation such as ``"P2 = P1 + dp"`` into a residual expression.
+* Compiling and evaluating residual expressions with a restricted AST whitelist.
+* Extracting referenced variable names for validation and unknown selection.
+* Evaluating warm-start right-hand-side expressions safely.
 
-Extensibility:
-- You can inject additional SAFE functions/constants at compile/eval time
-  (e.g., to allow `PropsSI(...)` from a controlled wrapper in the equations solver)
-  without modifying global SAFE_FUNCS/SAFE_CONSTS.
+Security model
+--------------
+Expressions are parsed with ``ast`` and rejected when they contain unsupported
+or unsafe syntax. Attribute access, subscripts, comprehensions, lambdas,
+method calls, imports, comparisons, boolean operations, and other non-arithmetic
+constructs are not allowed.
 
-Important note about strings:
-- This module allows short string literals because thermo calls (e.g., PropsSI)
-  commonly require string keys like "T", "P", "D".
-- To reduce abuse, we disallow string participation in arithmetic ops and enforce
-  a max literal length.
-- Additionally, we disallow string concatenation and formatting entirely.
+Evaluation uses::
 
-Warm-start support:
-- split_assignment(): detects simple "lhs = rhs" where lhs is a valid identifier.
-- compile_expression()/eval_expression(): compile/evaluate plain expressions (RHS) safely.
+    eval(code, {"__builtins__": {}}, safe_scope)
 
-LATEST FACTS / UPGRADE NOTE (Feb 2026):
-- The solver may evaluate thermo/property helper calls like:
-    PropsSI, PhaseSI, HAPropsSI
-    CTPropsSI, CTPropsMulti, CTBatchProps
-    LiBrPropsSI, LiBrH2OPropsSI
-    LiBrX_TP, LiBrH_TX, LiBrRho_TXP, LiBrT_HX
-    NH3H2O*, ammonia-water helper calls (native backend)
-  These must be allowed by the AST validator even when they are provided via the
-  runtime scope (params) rather than explicit extra_funcs at compile time.
-  We therefore include a conservative allowlist of approved callable names.
+String-literal policy
+---------------------
+Short string literals are allowed because thermodynamic-property helper calls
+often require keys such as ``"T"``, ``"P"``, or ``"D"``. To reduce misuse,
+strings are blocked from arithmetic operations such as string concatenation and
+are limited by ``_MAX_STRING_LITERAL_LEN``.
 
-Small upgrade in this version:
-- Add optional Cantera cache helper names (ctprops_cache_info / clear_ctprops_caches) to the allowlist.
-  These are not "thermo scalar" functions, but allowing them avoids confusing "Function not allowed"
-  errors if a user references them in an expression. (If they return non-float values, eval will still
-  raise a ParseError when converting to float.)
+Thermodynamic helper calls
+--------------------------
+The solver may evaluate controlled property helper calls supplied by the runtime
+scope, including CoolProp, Cantera, LiBr-H2O, and NH3-H2O helper names. These
+names are included in a conservative allowlist so the AST validator accepts the
+call syntax. The function object must still be provided by the runtime scope
+for evaluation to succeed.
 """
 
 import ast
@@ -58,11 +51,11 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Set, Tuple
 # ------------------------------ errors ------------------------------
 
 class UnsafeExpressionError(ValueError):
-    """Raised when an expression contains unsupported / unsafe syntax."""
+    """Raised when an expression contains unsupported or unsafe syntax."""
 
 
 class ParseError(ValueError):
-    """Raised when an equation/expression cannot be parsed or evaluated."""
+    """Raised when an equation or expression cannot be parsed or evaluated."""
 
 
 # ------------------------------ limits ------------------------------
@@ -160,87 +153,79 @@ SAFE_CONSTS: Dict[str, Any] = {
     "E": math.e,
 }
 
-# Conservative allowlist of callable names that are permitted to appear as f(...)
-# even if the compiler isn't explicitly told via extra_funcs.
+# Conservative allowlist of callable names that are permitted to appear as
+# f(...), even if the compiler is not explicitly told about them through
+# extra_funcs. Evaluation still requires the actual function to be present in
+# the runtime scope.
 _SAFE_CALL_NAMES: Set[str] = {
-    # -------------------- CoolProp + humid air --------------------
+    # CoolProp and humid air
     "PropsSI",
     "PhaseSI",
     "HAPropsSI",
 
-    # -------------------- Cantera backend (equilibrium / mixtures) --------------------
+    # Cantera backend
     "CTPropsSI",
     "CTPropsMulti",
     "CTBatchProps",
 
-    # Optional internal aliases (if injected by runtime scope)
+    # Optional internal Cantera aliases
     "ctprops_si",
     "ctprops_multi",
     "batch_ctprops",
     "cantera_available",
 
-    # Optional Cantera cache helpers (debug/perf)
+    # Optional Cantera cache helpers
     "ctprops_cache_info",
     "clear_ctprops_caches",
 
-    # -------------------- CoolProp AbstractState wrappers --------------------
+    # CoolProp AbstractState wrappers
     "ASPropsSI",
     "ASPropsMulti",
     "ASBatchProps",
 
-    # Convenience wrappers (fugacity, etc.)
+    # Convenience wrappers
     "FugacitySI",
     "FugacityCoeffSI",
     "LnFugacityCoeffSI",
     "ChemicalPotentialSI",
 
-    # Optional internal aliases (if injected by runtime scope)
+    # Optional internal AbstractState aliases
     "as_props_si",
     "as_props_multi",
     "batch_as_props",
 
-    # optional humid-air aliases used elsewhere
+    # Optional humid-air aliases
     "ha_props_si",
     "ha_props_multi",
     "batch_ha_props",
 
-    # -------------------- LiBr–H2O PropsSI-like entry points --------------------
+    # LiBr-H2O entry points and helper calls
     "LiBrPropsSI",
     "LiBrH2OPropsSI",
-
-    # LiBr helper calls
     "LiBrX_TP",
     "LiBrH_TX",
     "LiBrRho_TXP",
     "LiBrT_HX",
-
-    # vector/batch convenience
     "LiBrPropsMulti",
     "LiBrBatchProps",
-
-    # optional internal aliases
     "librh2o_props_si",
     "librh2o_props_multi",
     "batch_librh2o_props",
 
-    # -------------------- NH3–H2O (ammonia-water) backend + helpers --------------------
+    # NH3-H2O backend and helper calls
     "NH3H2O_TPX",
     "NH3H2O_STATE_TPX",
-
     "NH3H2O",
     "NH3H2O_STATE",
-
     "prop_tpx",
     "state_tpx",
-
     "props_multi_tpx",
     "batch_prop_tpx",
-
     "NH3H2OPropsSI",
     "NH3H2OPropsMulti",
     "NH3H2OBatchProps",
 
-    # Availability helpers (optional)
+    # Availability helpers
     "abstractstate_available",
     "nh3h2o_available",
 }
@@ -274,14 +259,23 @@ _ALLOWED_NODES = (
 
 @dataclass(frozen=True)
 class CompiledExpr:
-    """
-    A compiled expression.
+    """Compiled expression metadata and code object.
 
-    - raw: user expression string (may include "=" if compiled via compile_residual)
-    - residual: normalized residual expression string (no "=") OR the expression itself
-    - code: compiled Python code object ready for eval
-    - names: referenced identifiers (excluding SAFE_FUNCS/SAFE_CONSTS and injected extras)
+    Parameters
+    ----------
+    raw:
+        Original user expression string. This may include an equals sign when
+        compiled through ``compile_residual``.
+    residual:
+        Normalized residual expression string. For plain expressions, this is
+        the expression itself.
+    code:
+        Compiled Python code object ready for restricted evaluation.
+    names:
+        Referenced identifiers after excluding safe functions, safe constants,
+        and injected extras.
     """
+
     raw: str
     residual: str
     code: Any
@@ -289,19 +283,22 @@ class CompiledExpr:
 
 
 def preprocess_expr(s: str) -> str:
-    """
-    Minimal EES-ish preprocessing:
-    - '^' exponent -> '**'
-    - normalize unicode minus to '-'
-    - normalize common unicode operators: × · -> '*', ÷ -> '/'
-    - strip whitespace
+    """Apply minimal EES-style preprocessing to an expression.
+
+    The preprocessing performs these transformations:
+
+    * ``^`` becomes ``**``.
+    * Unicode minus becomes ``-``.
+    * Unicode multiplication symbols become ``*``.
+    * Unicode division becomes ``/``.
+    * Leading and trailing whitespace are stripped.
     """
     if s is None:
         raise ParseError("Expression is None.")
     out = str(s).strip()
     if len(out) > _MAX_EXPR_LEN:
         raise ParseError(f"Expression too long ({len(out)} chars). Limit is {_MAX_EXPR_LEN}.")
-    out = out.replace("−", "-")  # unicode minus
+    out = out.replace("−", "-")
     out = out.replace("^", "**")
     out = out.replace("×", "*").replace("·", "*").replace("⋅", "*")
     out = out.replace("÷", "/")
@@ -309,7 +306,11 @@ def preprocess_expr(s: str) -> str:
 
 
 def is_identifier(name: str) -> bool:
-    """True if `name` is a valid identifier [A-Za-z_][A-Za-z0-9_]*."""
+    """Return whether ``name`` is a simple Python-style identifier.
+
+    The accepted pattern is an ASCII-style identifier beginning with a letter or
+    underscore and followed by letters, digits, or underscores.
+    """
     if not isinstance(name, str):
         return False
     s = name.strip()
@@ -324,13 +325,10 @@ def is_identifier(name: str) -> bool:
 
 
 def split_assignment(eq: str) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Detect a simple assignment of the form:
-        lhs = rhs
+    """Detect a simple assignment expression.
 
-    Returns:
-      (lhs, rhs) if it is a simple assignment AND lhs is a plain identifier,
-      otherwise (None, None).
+    The accepted shape is ``lhs = rhs`` where ``lhs`` is a plain identifier.
+    If the expression is not a simple assignment, ``(None, None)`` is returned.
     """
     s = preprocess_expr(eq)
 
@@ -354,13 +352,16 @@ def split_assignment(eq: str) -> Tuple[Optional[str], Optional[str]]:
 
 
 def normalize_equation_to_residual(eq: str) -> str:
-    """
-    Convert an equation into a residual expression.
+    """Convert an equation into a residual expression.
 
-    Examples:
-      "P2 = P1 + dp" -> "(P2) - (P1 + dp)"
-      "a==b"         -> "(a) - (b)"
-      "f(x)"         -> "f(x)"   (already an expression; interpreted as residual)
+    Examples
+    --------
+    ``"P2 = P1 + dp"`` becomes ``"(P2) - (P1 + dp)"``.
+
+    ``"a == b"`` becomes ``"(a) - (b)"``.
+
+    ``"f(x)"`` is returned as ``"f(x)"`` and interpreted as an existing
+    residual expression.
     """
     s = preprocess_expr(eq)
 
@@ -381,15 +382,11 @@ def normalize_equation_to_residual(eq: str) -> str:
 
 
 class _Validator(ast.NodeVisitor):
-    """
-    Strict AST validator.
+    """Strict AST validator for safe arithmetic expressions.
 
-    Allowed:
-    - numeric constants
-    - short string constants
-    - names
-    - arithmetic BinOp / UnaryOp
-    - function calls to SAFE_FUNCS or explicitly injected extra_funcs, or approved thermo names
+    Allowed syntax includes numeric constants, short string constants, names,
+    arithmetic binary and unary operations, and direct calls to approved
+    function names.
     """
 
     def __init__(
@@ -431,7 +428,7 @@ class _Validator(ast.NodeVisitor):
                 )
             return
         raise UnsafeExpressionError(
-            f"Unsupported constant type: {type(val).__name__}. Only int/float/short string allowed."
+            f"Unsupported constant type: {type(val).__name__}. Only int, float, or short string is allowed."
         )
 
     def visit_UnaryOp(self, node: ast.UnaryOp) -> Any:
@@ -467,8 +464,8 @@ class _Validator(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call) -> Any:
         if not isinstance(node.func, ast.Name):
             raise UnsafeExpressionError(
-                "Only direct function calls like f(x) are allowed; "
-                "attribute access / method calls are forbidden."
+                "Only direct function calls like f(x) are allowed. "
+                "Attribute access and method calls are forbidden."
             )
 
         fname = str(node.func.id)
@@ -531,9 +528,7 @@ def compile_expression(
     extra_funcs: Optional[Mapping[str, Callable[..., Any]]] = None,
     extra_consts: Optional[Mapping[str, Any]] = None,
 ) -> CompiledExpr:
-    """
-    Compile a plain arithmetic expression (no '=' normalization).
-    """
+    """Compile a plain arithmetic expression without equation normalization."""
     return _compile_checked(
         expr,
         allow_strings=True,
@@ -548,10 +543,10 @@ def compile_residual(
     extra_funcs: Optional[Mapping[str, Callable[..., Any]]] = None,
     extra_consts: Optional[Mapping[str, Any]] = None,
 ) -> CompiledExpr:
-    """
-    Compile an equation into a residual expression.
+    """Compile an equation into a residual expression.
 
-    If `eq` already has no '=', it is treated as an expression residual directly.
+    If ``eq`` has no equals sign, it is treated as an existing residual
+    expression.
     """
     residual = normalize_equation_to_residual(eq)
     c = _compile_checked(
@@ -595,9 +590,7 @@ def eval_compiled(
     extra_funcs: Optional[Mapping[str, Callable[..., Any]]] = None,
     extra_consts: Optional[Mapping[str, Any]] = None,
 ) -> float:
-    """
-    Evaluate a compiled expression safely and coerce to float.
-    """
+    """Evaluate a compiled expression safely and coerce the result to float."""
     scope = _build_scope(
         values=values,
         params=params,
@@ -625,9 +618,7 @@ def eval_expression(
     extra_funcs: Optional[Mapping[str, Callable[..., Any]]] = None,
     extra_consts: Optional[Mapping[str, Any]] = None,
 ) -> float:
-    """
-    Convenience: compile + evaluate a plain expression.
-    """
+    """Compile and evaluate a plain expression."""
     c = compile_expression(
         expr,
         extra_funcs=extra_funcs,

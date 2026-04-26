@@ -1,27 +1,33 @@
 from __future__ import annotations
 
-"""
-apis
+"""Application API contracts for TDPy.
 
-Central, lightweight API contracts for the top-level application layer.
+This module contains the lightweight request, result, and problem-specification
+objects used by the top-level application layer.
 
-Design rules:
-- RunRequest / RunResult are the stable envelopes used by CLI/GUI/app.py.
-- Do NOT duplicate equation-system dataclasses here:
-  canonical EES-ish equation specs live in `equations.spec`.
-- Keep this module dependency-light: no SciPy / GEKKO / CoolProp imports.
+Design rules
+------------
+The module intentionally stays dependency-light:
 
-Latest facts / upgrades (Feb 2026):
-- The project now supports an optimization problem_type ("optimize") in addition to:
-    - "equations"
-    - "nozzle_ideal"
-    - "thermo_props"
-- CLI / GUI may pass runtime overrides as either:
-    - RunRequest.opts          (newer, used by CLI)
-    - RunRequest.overrides     (older, kept for back-compat)
-  App code should treat them as additive, with opts taking precedence if both are provided.
-- thermo_props backend strings are no longer limited to CoolProp. They may include
-  Cantera and native mixture backends (LiBr–H2O, NH3–H2O) depending on what's installed.
+* ``RunRequest`` and ``RunResult`` are the stable envelopes used by the CLI,
+  GUI, and ``app.py``.
+* Equation-system dataclasses are not duplicated here. The canonical EES-style
+  equation specs live in ``equations.spec``.
+* Heavy optional backends such as SciPy, GEKKO, CoolProp, and Cantera are not
+  imported here.
+
+Runtime notes
+-------------
+TDPy supports ``"optimize"`` problem inputs in addition to ``"equations"``,
+``"nozzle_ideal"``, and ``"thermo_props"``.
+
+CLI and GUI callers may pass runtime overrides through ``RunRequest.opts`` or
+``RunRequest.overrides``. Newer code should prefer ``opts``. Application code
+should treat both mappings as additive and let ``opts`` take precedence.
+
+Thermodynamic-property backend names are intentionally extensible. Backends may
+include CoolProp, Cantera, and native mixture implementations depending on the
+installed optional dependencies.
 """
 
 from dataclasses import dataclass, field
@@ -56,26 +62,38 @@ __all__ = [
 # Core runner request/response
 # ---------------------------------------------------------------------
 
-UnitSystem = Literal["SI", "English", "Mixed"]  # Mixed = accept per-field units (e.g., "300 K")
+UnitSystem = Literal["SI", "English", "Mixed"]
 
 
 @dataclass(frozen=True)
 class RunRequest:
-    """
-    Top-level run request (app/CLI/GUI envelope).
+    """Top-level run request used by the app, CLI, and GUI.
 
-    Backward compatible:
-      - in_path is required (file-driven)
-      - out_path optional
-      - make_plots optional
+    Parameters
+    ----------
+    in_path:
+        Input file path. TDPy is intentionally file-driven, so this is the
+        only required path.
+    out_path:
+        Optional output file path. When omitted, the application layer chooses
+        a default path.
+    make_plots:
+        Request default plots when the selected solver supports them.
+    unit_system:
+        Unit-system hint. ``"Mixed"`` means individual fields may include
+        explicit units such as ``"300 K"``.
+    prefer_solver:
+        Optional solver preference kept for compatibility with older callers.
+    opts:
+        Preferred runtime override mapping used by newer CLI tooling.
+    overrides:
+        Legacy runtime override mapping kept for compatibility.
 
-    Runtime override channels:
-      - opts:      primary channel for CLI overrides (preferred)
-      - overrides: legacy channel kept for compatibility
-
-    Notes:
-      - This module does not enforce how overrides are applied; app.py decides.
-      - For minimal surprise, app.py should merge overrides then opts, so opts wins.
+    Notes
+    -----
+    This module does not apply overrides directly. The application layer decides
+    how to merge and use them. For minimal surprise, application code should
+    merge ``overrides`` first and then ``opts`` so that ``opts`` wins.
     """
 
     in_path: Path
@@ -94,12 +112,26 @@ class RunRequest:
 
 @dataclass(frozen=True)
 class RunResult:
-    """
-    Standardized result envelope.
+    """Standardized result envelope returned by the application layer.
 
-    payload: arbitrary JSON-serializable dict returned by a solver.
-    plots:   name -> file path (usually HTML for Plotly)
-    meta:    solver + versioning + timing info, etc.
+    Parameters
+    ----------
+    ok:
+        Whether the pipeline completed successfully.
+    solver:
+        Solver or backend label used for the run.
+    in_path:
+        Resolved input path.
+    out_path:
+        Resolved output path, if output was written.
+    payload:
+        JSON-serializable result payload returned by the solver.
+    plots:
+        Mapping from plot names to generated file paths.
+    warnings:
+        Non-fatal warnings produced during the run.
+    meta:
+        Additional metadata such as backend details, timing, or version tags.
     """
 
     ok: bool
@@ -115,15 +147,19 @@ class RunResult:
 
 @dataclass(frozen=True)
 class ProblemSpec:
-    """
-    Generic problem specification produced by the design/build layer.
+    """Generic problem specification produced by the design layer.
 
-    problem_type is a string to keep the registry extensible.
-    Common values in this project:
-      - "nozzle_ideal"
-      - "thermo_props"
-      - "equations"
-      - "optimize"
+    Parameters
+    ----------
+    problem_type:
+        Extensible problem type string. Common values include
+        ``"nozzle_ideal"``, ``"thermo_props"``, ``"equations"``, and
+        ``"optimize"``.
+    data:
+        Problem-specific input mapping after the top-level ``problem_type`` has
+        been separated.
+    schema_version:
+        Schema version for the generic envelope.
     """
 
     problem_type: str
@@ -143,15 +179,29 @@ PropsBasis = Literal["mass", "molar"]
 
 @dataclass(frozen=True)
 class ThermoPropsRequest:
-    """
-    Request a set of thermodynamic_properties from a backend (e.g., CoolProp).
+    """Request thermodynamic properties from a selected backend.
 
-    Example:
-      fluid="R134a"
-      inputs={"T": 300.0, "P": 101325.0}
-      outputs=["H","S","D"]
-      basis="mass"
-      units={"T":"K","P":"Pa","H":"J/kg","S":"J/kg-K","D":"kg/m^3"}  # optional
+    Parameters
+    ----------
+    fluid:
+        Fluid or working-pair identifier.
+    inputs:
+        Mapping of input property names to values.
+    outputs:
+        Requested output property names.
+    backend:
+        Backend selector such as ``"coolprop"``, ``"cantera"``, or ``"auto"``.
+    basis:
+        Property basis, usually ``"mass"`` or ``"molar"``.
+    units:
+        Optional mapping of property names to unit strings.
+    options:
+        Backend-specific options.
+
+    Example
+    -------
+    A typical request may use ``fluid="R134a"``, inputs such as temperature and
+    pressure, and outputs such as enthalpy, entropy, and density.
     """
 
     fluid: str
@@ -166,7 +216,7 @@ class ThermoPropsRequest:
 
 @dataclass(frozen=True)
 class ThermoPropsResult:
-    """Result of a thermo_props evaluation."""
+    """Result of a thermodynamic-property evaluation."""
 
     fluid: str
     backend: str

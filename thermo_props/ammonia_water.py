@@ -1,36 +1,28 @@
 """
-ammonia_water.py  (Ibrahim & Klein 1993 core thermo)
+Ammonia-water property model based on Ibrahim and Klein.
 
-Implements thermodynamic properties for NH3-H2O using the reduced Gibbs formulation
-and excess Gibbs model from:
+This module implements thermodynamic properties for NH3-H2O mixtures using a
+reduced Gibbs formulation and an excess Gibbs model.
 
-Ibrahim, O.M., Klein, S.A.,
-"Thermodynamic Properties of Ammonia-Water Mixtures,"
-ASHRAE Trans.: Symposia, 21(2), 1495 (1993).
+Primary goals
+-------------
+The implementation provides an EES-like state call through ``props_tpx`` and
+returns enthalpy, entropy, internal energy, specific volume, density, and the
+EES-style quality flag. It also includes guardrails that avoid non-physical
+negative or non-finite volume and density values in successful states.
 
-Primary goal:
-- EES-like state call: props_tpx(T, P, X_mass) -> h,s,u,v,rho and EES q flag
-- Robust outputs: never return negative/NaN/inf v or rho in “ok” states
-- Avoid false vapor / 2-phase classification in regions where the IK vapor EOS is not applicable
+Units
+-----
+Inputs use kelvin, pascals, and NH3 mass fraction. Internal calculations use
+reduced temperature and pressure. Outputs use SI units, with convenience
+kilojoule-per-kilogram fields also included.
 
-Units:
-- Inputs:  T [K], P [Pa], X = NH3 mass fraction [-]
-- Internals: reduced Tr=T/TB, Pr=P/PB
-- Outputs: J/kg, J/kg-K, m^3/kg, kg/m^3; plus kJ/kg helpers
-
-VLE approach (Gibbs-consistent K-form):
-- Ideal vapor mixing + liquid activity coefficients from excess Gibbs:
-    y_i = x_i * gamma_i(x,T,P) * K0_i(T,P)
-    ln K0_i = (g_i^L(T,P) - g_i^g(T,P)) / (R T)
-  plus y1 + y2 = 1 => solve for x (at given T,P)
-
-Critical guardrail:
-- The IK vapor EOS is intended for vapor states. At some (T,P) the vapor EOS yields
-  non-physical molar volumes (V_mol <= 0). When that happens, we:
-    - skip VLE
-    - force single-phase liquid (subcooled) behavior
-  This prevents negative densities/volumes and bogus "superheated/2ph" flags.
-
+VLE approach
+------------
+The vapor-liquid equilibrium helper uses a Gibbs-consistent K-form based on
+liquid activity coefficients from the excess Gibbs model. The model skips VLE
+classification when the vapor equation of state is not applicable and falls
+back to single-phase liquid behavior to avoid false vapor or two-phase flags.
 """
 
 from __future__ import annotations
@@ -179,7 +171,7 @@ def _envelope_note(T: float, P: float) -> str:
 # ------------------------ fraction conversion ------------------------
 
 def x_from_w(w_nh3: float) -> float:
-    """NH3 mass fraction -> mole fraction."""
+    """Convert NH3 mass fraction to mole fraction."""
     w = _clamp01(float(w_nh3))
     M1 = PURE["NH3"].M
     M2 = PURE["H2O"].M
@@ -188,7 +180,7 @@ def x_from_w(w_nh3: float) -> float:
     return n1 / (n1 + n2)
 
 def w_from_x(x_nh3: float) -> float:
-    """NH3 mole fraction -> mass fraction."""
+    """Convert NH3 mole fraction to mass fraction."""
     x = _clamp01(float(x_nh3))
     M1 = PURE["NH3"].M
     M2 = PURE["H2O"].M
@@ -197,7 +189,7 @@ def w_from_x(x_nh3: float) -> float:
     return m1 / (m1 + m2)
 
 def M_mix_from_x(x_nh3: float) -> float:
-    """Mixture molar mass [kg/mol] from mole fraction."""
+    """Return mixture molar mass in kilograms per mole from mole fraction."""
     x = _clamp01(float(x_nh3))
     return x * PURE["NH3"].M + (1.0 - x) * PURE["H2O"].M
 
@@ -214,8 +206,10 @@ def _Vr_pure(comp: Comp, phase: Phase, Tr: float, Pr: float) -> float:
 
 def _pure_vapor_applicable(T: float, P: float, vr_tol: float = 1e-12) -> bool:
     """
-    Vapor correlation applicability screen:
-    require positive reduced molar volume for both pure vapors at (T,P).
+    Return whether the pure-vapor correlations are applicable.
+
+    The screen requires positive reduced molar volume for both pure vapors at the
+    specified temperature and pressure.
     """
     Tr = T / TB
     Pr = P / PB
@@ -230,8 +224,10 @@ def _pure_vapor_applicable(T: float, P: float, vr_tol: float = 1e-12) -> bool:
 
 def _G_r_L(comp: Comp, Tr: float, Pr: float) -> Tuple[float, float, float]:
     """
-    IK Eq (6): pure liquid reduced Gibbs and derivatives.
-    Returns (Gr, dGr/dTr, dGr/dPr).
+    Return pure-liquid reduced Gibbs function and derivatives.
+
+    The returned tuple contains reduced Gibbs energy, derivative with respect to
+    reduced temperature, and derivative with respect to reduced pressure.
     """
     c = PURE[comp]
     Tr0, Pr0 = c.Tr0, c.Pr0
@@ -269,8 +265,10 @@ def _G_r_L(comp: Comp, Tr: float, Pr: float) -> Tuple[float, float, float]:
 
 def _G_r_g(comp: Comp, Tr: float, Pr: float) -> Tuple[float, float, float]:
     """
-    IK Eq (7): pure vapor reduced Gibbs and derivatives.
-    Returns (Gr, dGr/dTr, dGr/dPr).
+    Return pure-vapor reduced Gibbs function and derivatives.
+
+    The returned tuple contains reduced Gibbs energy, derivative with respect to
+    reduced temperature, and derivative with respect to reduced pressure.
     """
     c = PURE[comp]
     Tr0, Pr0 = c.Tr0, c.Pr0
@@ -332,13 +330,11 @@ def pure_props(
     validate_volume: bool = True,
 ) -> Dict[str, float]:
     """
-    Pure component thermodynamic_properties at (T,P) for phase 'L' or 'g'.
+    Return pure-component thermodynamic properties at temperature and pressure.
 
-    Returns molar:
-      G_mol [J/mol], H_mol [J/mol], S_mol [J/mol-K], V_mol [m^3/mol]
-    And mass:
-      h,s,u,v,rho with keys:
-        h_J_per_kg, s_J_per_kgK, u_J_per_kg, v_m3_per_kg, rho_kg_per_m3
+    The phase argument must be ``"L"`` for liquid or ``"g"`` for vapor. The returned
+    dictionary includes molar Gibbs energy, enthalpy, entropy, and volume, plus
+    mass-basis enthalpy, entropy, internal energy, specific volume, and density.
     """
     T = float(T)
     P = float(P)
@@ -400,16 +396,10 @@ def pure_props(
 
 def _F_terms_excess(Tr: float, Pr: float) -> Tuple[float, float, float, float, float, float, float, float, float]:
     """
-    IK Eqs (16)-(18) for excess Gibbs model:
+    Return terms and derivatives for the excess Gibbs model.
 
-      F1 = E1 + E2 Pr + (E3 + E4 Pr) Tr + E5/Tr + E6/Tr^2
-      F2 = E7 + E8 Pr + (E9 + E10 Pr) Tr + E11/Tr + E12/Tr^2
-      F3 = E13 + E14 Pr + E15/Tr + E16/Tr^2
-
-    Returns:
-      F1,F2,F3,
-      dF1/dTr,dF2/dTr,dF3/dTr,
-      dF1/dPr,dF2/dPr,dF3/dPr
+    The return value contains the three model functions, their temperature
+    derivatives, and their pressure derivatives.
     """
     invT = 1.0 / Tr
     invT2 = invT * invT
@@ -434,10 +424,11 @@ def _F_terms_excess(Tr: float, Pr: float) -> Tuple[float, float, float, float, f
 
 def excess_reduced(x: float, Tr: float, Pr: float) -> Tuple[float, float, float]:
     """
-    IK Eq (15):
-      GEr = x(1-x) [ F1 + F2(2x-1) + F3(2x-1)^2 ]
+    Return reduced excess Gibbs energy and derivatives.
 
-    Returns (GEr, dGEr/dTr, dGEr/dPr).
+    The returned tuple contains the reduced excess Gibbs energy, its derivative
+    with respect to reduced temperature, and its derivative with respect to reduced
+    pressure.
     """
     x1 = _clamp01(float(x))
     x2 = 1.0 - x1
@@ -454,11 +445,11 @@ def excess_reduced(x: float, Tr: float, Pr: float) -> Tuple[float, float, float]
 
 def excess_props(x: float, T: float, P: float) -> Dict[str, float]:
     """
-    Excess liquid thermodynamic_properties from reduced excess Gibbs and derivatives:
+    Return excess liquid thermodynamic properties.
 
-      sE_mol = -R * dGEr/dTr
-      hE_mol = R*TB*(GEr - Tr*dGEr/dTr)
-      vE_mol = (R*TB/PB) * dGEr/dPr
+    The calculation uses the reduced excess Gibbs energy and its derivatives to
+    compute molar excess Gibbs energy, enthalpy, entropy, and volume, along with
+    mass-basis diagnostic values.
     """
     Tr = float(T) / TB
     Pr = float(P) / PB
@@ -484,16 +475,10 @@ def excess_props(x: float, T: float, P: float) -> Dict[str, float]:
 
 def activity_ln_gamma(x: float, T: float, P: float) -> Tuple[float, float]:
     """
-    Activity coefficient logs from excess Gibbs (binary mixture):
+    Return activity-coefficient logarithms for the binary mixture.
 
-      ln(gamma_i) = mu_i^E / (R T)
-
-    With reduced scaling (GE_mol = R*TB*GEr):
-      ln(gamma_i) = mu_i,r^E / Tr
-
-    where:
-      mu1_r^E = GEr + (1-x)*d(GEr)/dx
-      mu2_r^E = GEr - x*d(GEr)/dx
+    The values are derived from the excess Gibbs model and returned as
+    ``ln(gamma_NH3)`` and ``ln(gamma_H2O)``.
     """
     Tr = float(T) / TB
     Pr = float(P) / PB
@@ -522,7 +507,7 @@ def activity_ln_gamma(x: float, T: float, P: float) -> Tuple[float, float]:
 
 
 def activity_coeffs(x: float, T: float, P: float) -> Tuple[float, float]:
-    """Activity coefficients (gamma) from excess Gibbs; exp is clipped to avoid overflow."""
+    """Return activity coefficients from the excess Gibbs model."""
     ln1, ln2 = activity_ln_gamma(x, T, P)
     return _safe_exp(ln1), _safe_exp(ln2)
 
@@ -531,7 +516,11 @@ def activity_coeffs(x: float, T: float, P: float) -> Tuple[float, float]:
 
 def mix_liquid_props(T: float, P: float, x_nh3: float) -> Dict[str, float]:
     """
-    Liquid NH3-H2O solution at (T,P,x) where x is NH3 mole fraction.
+    Return liquid NH3-H2O solution properties.
+
+    The composition argument is the NH3 mole fraction. Returned values include
+    phase, mole and mass composition, mass-basis thermodynamic properties, and
+    kilojoule-per-kilogram convenience fields.
     """
     x = _clamp01(float(x_nh3))
     x2 = 1.0 - x
@@ -574,9 +563,10 @@ def mix_liquid_props(T: float, P: float, x_nh3: float) -> Dict[str, float]:
 
 def mix_vapor_props(T: float, P: float, y_nh3: float) -> Dict[str, float]:
     """
-    Vapor mixture at (T,P,y) where y is NH3 mole fraction.
+    Return vapor NH3-H2O mixture properties.
 
-    IK treatment here: ideal mixing of the pure-vapor real-gas correlations (no vapor excess term).
+    The composition argument is the NH3 vapor mole fraction. The mixture treatment
+    uses ideal mixing of the pure-vapor real-gas correlations.
     """
     y = _clamp01(float(y_nh3))
     y2 = 1.0 - y
@@ -619,11 +609,11 @@ def mix_vapor_props(T: float, P: float, y_nh3: float) -> Dict[str, float]:
 
 def _lnK0_pure_from_gibbs(T: float, P: float) -> Optional[Tuple[float, float]]:
     """
-    Build ln(K0) for each component:
+    Return pure-component equilibrium constants from Gibbs values.
 
-      ln K0_i(T,P) = (g_i^L - g_i^g) / (R T)
-
-    Returns (lnK0_nh3, lnK0_h2o) or None if the vapor correlation is not applicable at (T,P).
+    The returned tuple contains the logarithmic K-values for NH3 and H2O. The
+    function returns ``None`` when the vapor correlation is not applicable at the
+    specified state.
     """
     if not _pure_vapor_applicable(T, P):
         return None
@@ -649,8 +639,10 @@ def _y_sums_from_x(
     lnK0_2: float,
 ) -> Tuple[float, float, float]:
     """
-    Compute (y1, y2, sumy) for a given liquid composition x using log-space arithmetic.
-    y1,y2 are normalized so y1+y2=1 even if sumy != 1 due to numeric drift.
+    Return vapor composition and unnormalized vapor-sum diagnostic.
+
+    The helper evaluates vapor mole fractions from a trial liquid composition using
+    log-space arithmetic.
     """
     x1 = _clamp01(x)
     x2 = 1.0 - x1
@@ -677,13 +669,11 @@ def equilibrium_xy_TP(
     max_iter: int = 200,
 ) -> Optional[Tuple[float, float]]:
     """
-    Solve equilibrium liquid x and vapor y at given (T,P) via:
+    Solve equilibrium liquid and vapor compositions at temperature and pressure.
 
-      y1 = x1 * gamma1(x) * K0_1(T,P)
-      y2 = x2 * gamma2(x) * K0_2(T,P)
-      y1 + y2 = 1
-
-    Returns (xL, yV) in mole fractions if a root/bracket is found, else None.
+    The return value is ``(xL, yV)`` in mole fractions when a root or bracket is
+    found. The function returns ``None`` when equilibrium cannot be established
+    with the current guardrails.
     """
     lnK0 = _lnK0_pure_from_gibbs(T, P)
     if lnK0 is None:
@@ -809,20 +799,31 @@ def _finalize(base: Dict[str, float], *, ok: int = 1, error: str = "", warning: 
 
 def props_tpx(T_K: float, P_Pa: float, X: float, strict: bool = True) -> Dict[str, float]:
     """
-    EES-like state call: given T, P, and NH3 mass fraction X, return:
-      h,s,u,v,rho and EES-style quality flag q.
+    Return an EES-like NH3-H2O state for temperature, pressure, and mass fraction.
 
-    q convention (EES docs):
-      q = -0.001  => subcooled (single-phase liquid)
-      0<=q<=1     => saturated two-phase (vapor mass fraction)
-      q = 1.001   => superheated (single-phase vapor)
+    Parameters
+    ----------
+    T_K:
+        Temperature in kelvin.
+    P_Pa:
+        Pressure in pascals.
+    X:
+        NH3 mass fraction.
+    strict:
+        When true, invalid states raise. When false, invalid states return a result
+        payload with ``ok`` set to zero and non-finite property fields.
 
-    Robustness upgrades:
-    - If the vapor EOS is not applicable at (T,P) (non-physical molar volumes),
-      skip VLE and do not classify as vapor/2-phase.
-    - Never return negative v or rho; if something goes wrong:
-        strict=True  -> raise
-        strict=False -> return ok=0 with NaNs + error message
+    Returns
+    -------
+    dict[str, float]
+        State payload containing thermodynamic properties, composition diagnostics,
+        and convenience unit conversions.
+
+    Notes
+    -----
+    The quality flag follows the EES convention. The implementation avoids VLE
+    classification when the vapor equation of state is not applicable at the
+    specified state.
     """
     T = float(T_K)
     P = float(P_Pa)
