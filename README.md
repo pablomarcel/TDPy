@@ -27,14 +27,14 @@ In plain terms: **TDPy is an open engineering workbench for solving thermodynami
 
 The live documentation is published with Sphinx and GitHub Pages:
 
-**https://pablomarcel.github.io/tdpy/**
+**https://pablomarcel.github.io/TDPy/**
 
 The documentation site includes API references for the main TDPy application layer, equation-solving modules, interpreter pipeline, thermodynamic-property backends, GUI helpers, and supporting utilities.
 
 Useful documentation links:
 
-- [TDPy documentation portal](https://pablomarcel.github.io/tdpy/)
-- [API Reference](https://pablomarcel.github.io/tdpy/api.html)
+- [TDPy documentation portal](https://pablomarcel.github.io/TDPy/)
+- [API Reference](https://pablomarcel.github.io/TDPy/api.html)
 - [GitHub Pages deployment workflow](.github/workflows/pages.yml)
 
 For local documentation builds:
