@@ -8,6 +8,42 @@ In plain terms: **TDPy is an open engineering workbench for solving thermodynami
 
 ---
 
+# TDPy
+
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-38BDF8.svg)](https://pablomarcel.github.io/tdpy/)
+[![Build & Publish Docs](https://github.com/pablomarcel/tdpy/actions/workflows/pages.yml/badge.svg)](https://github.com/pablomarcel/tdpy/actions/workflows/pages.yml)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+**Python-first thermodynamics, property evaluation, nonlinear equation solving, optimization, and thermal-analysis workflows inspired by EES.**
+
+TDPy is a Python-first engineering toolkit for thermodynamics, property evaluation, nonlinear equation solving, optimization, and 1D thermal analysis. It is inspired by the EES workflow, but built as an open, scriptable, extensible platform around JSON/TXT inputs, CLI tools, and GUI workflows.
+
+In plain terms: **TDPy is an open engineering workbench for solving thermodynamics and equation-based engineering problems in Python.**
+
+---
+
+## Documentation
+
+The live documentation is published with Sphinx and GitHub Pages:
+
+**https://pablomarcel.github.io/tdpy/**
+
+The documentation site includes API references for the main TDPy application layer, equation-solving modules, interpreter pipeline, thermodynamic-property backends, GUI helpers, and supporting utilities.
+
+Useful documentation links:
+
+- [TDPy documentation portal](https://pablomarcel.github.io/tdpy/)
+- [API Reference](https://pablomarcel.github.io/tdpy/api.html)
+- [GitHub Pages deployment workflow](.github/workflows/pages.yml)
+
+For local documentation builds:
+
+```bash
+python -m cli sphinx-skel docs
+make -C docs html
+```
+
 ## Screenshots
 
 ### GUI workflow — light theme
